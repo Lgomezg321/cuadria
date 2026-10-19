@@ -8,7 +8,7 @@ Actualizado: 2026-10-19, America/Bogota.
 
 Repositorio original verificado antes de modificar: `Lgomezg321/cuadria`, main `81928fb`, únicamente README.md y sin cambios locales. Se conservó su historia. Rama: `codex/cuadria-foundation`.
 
-No existe un proyecto Supabase conectado a esta sesión ni una URL Vercel verificada. Se localizaron ambas integraciones y se propuso habilitarlas. No se crearon recursos externos ni se inventaron credenciales.
+No existe un proyecto Supabase conectado a esta sesión ni una URL pública Vercel verificada. Se localizaron ambas integraciones y se propuso habilitarlas. Tras publicar la rama, GitHub reportó integraciones Vercel existentes para `cuadria`, `cuadria-caja`, `cuadria-app` y `cuadria-czyg`; esa evidencia actualiza la premisa inicial de que Vercel no existía. No se creó otro proyecto ni se inventaron credenciales.
 
 ## Implementado
 
@@ -71,3 +71,9 @@ Habilitar acceso a Supabase y Vercel. Crear o seleccionar **cuadria-dev**, aplic
 ## Continuidad
 
 Al retomar: leer AGENTS.md y este archivo; revisar Git y los resultados del workflow; confirmar si las integraciones ya fueron conectadas. No reconstruir el proyecto ni afirmar que los módulos parciales completan las fases correspondientes.
+
+## Publicación y CI
+
+La rama fue publicada en el repositorio existente. Crear PR mediante la integración devolvió HTTP 403, Resource not accessible by integration; la sesión web de GitHub está sin iniciar. No se creó PR ni se integró main. La comparación está en https://github.com/Lgomezg321/cuadria/compare/main...codex/cuadria-foundation .
+
+El primer CI falló en npm ci: al lockfile generado con npm 11.6 le faltaban dependencias opcionales @emnapi/core y @emnapi/runtime exigidas por npm 11.19 en Linux. Se regeneró desde un directorio limpio con npm 11.19 y se validó resolución para Linux x64. Se vuelve a ejecutar Quality con el lockfile corregido.

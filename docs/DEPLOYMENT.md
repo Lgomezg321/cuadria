@@ -2,7 +2,7 @@
 
 ## Estado real
 
-No se ha creado ni verificado un proyecto Supabase o Vercel desde esta sesión. Las integraciones fueron encontradas, pero no estaban conectadas. La opción preferida es habilitar ambas integraciones y continuar desde Codex; no enviar secretos por chat.
+No se ha creado un proyecto Supabase o Vercel desde esta sesión. Al publicar la rama, GitHub reportó despliegues automáticos de cuatro proyectos Vercel existentes: cuadria, cuadria-caja, cuadria-app y cuadria-czyg. Falta acceso administrativo y verificación de la URL pública; reutilizar el proyecto canónico cuadria antes de considerar otro. La opción preferida es habilitar las integraciones y continuar desde Codex; no enviar secretos por chat.
 
 ## Supabase: intervención mínima
 
@@ -22,7 +22,7 @@ La región está disponible según la [documentación oficial de Supabase](https
 ## Vercel
 
 1. Ingresar en https://vercel.com/new o habilitar la integración Vercel.
-2. Importar exclusivamente `Lgomezg321/cuadria`; nombre del proyecto **cuadria**.
+2. Revisar primero el proyecto existente **cuadria** asociado a `Lgomezg321/cuadria`. No crear un quinto proyecto. Si el propietario confirma que ninguno de los existentes corresponde a esta instalación, importar exclusivamente ese repositorio.
 3. Framework: Next.js. Root Directory: raíz del repositorio. Node.js: 24.x. Install: `npm ci`. Build: `npm run build`. Output Directory: automático.
 4. Para la primera prueba, desplegar la rama `codex/cuadria-foundation` como Preview. Mantener el control de acceso de previews disponible en la cuenta. No declarar producción lista porque una preview compile.
 5. Configurar las tres variables de `.env.example`. `NEXT_PUBLIC_APP_URL` debe ser el origen HTTPS exacto de ese entorno. Utilizar Supabase de desarrollo para Preview; separar producción más adelante.
