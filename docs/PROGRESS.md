@@ -8,7 +8,7 @@ Actualizado: 2026-10-19, America/Bogota.
 
 Repositorio único: `Lgomezg321/cuadria`. Se conservó main original `81928fb`; implementación en `codex/cuadria-foundation`. No se integró main ni se reemplazó su historia.
 
-No hay conexión Supabase autorizada disponible en esta sesión. No se aplicaron migraciones a una base externa ni se enviaron invitaciones reales. GitHub confirmó compilaciones Vercel automáticas existentes para `cuadria`, `cuadria-caja`, `cuadria-app` y `cuadria-czyg`. No se creó otro proyecto. Falta verificar el proyecto canónico, variables y circuito autenticado en la URL pública.
+No hay conexión Supabase autorizada disponible en esta sesión. La comprobación web también llegó a la pantalla de inicio de sesión. No se aplicaron migraciones a una base externa ni se enviaron invitaciones reales. GitHub confirmó compilaciones Vercel automáticas existentes para `cuadria`, `cuadria-caja`, `cuadria-app` y `cuadria-czyg`. No se creó otro proyecto. Falta verificar el proyecto canónico, variables y circuito autenticado en la URL pública.
 
 ## Implementado
 
@@ -32,7 +32,7 @@ No hay conexión Supabase autorizada disponible en esta sesión. No se aplicaron
 
 El commit `bf93a3b6b775b6dabd078be955c00a8f9a2c56c1` completó satisfactoriamente [Quality 39318345627](https://github.com/Lgomezg321/cuadria/actions/runs/39318345627): 44 pruebas SQL/unitarias, 3 casos de concurrencia en PostgreSQL 17.11, 6 E2E desktop/móvil, lint, tipos, build y auditoría de producción.
 
-La ampliación pasó localmente `npm run typecheck`, `npm run lint`, `npm test` (70 pruebas en 4 archivos), `npm run build`, `npm run format:check` y `git diff --check`; `npm audit --omit=dev` reportó 0 vulnerabilidades. Incluye pruebas de borradores, cierres, reportes, invitaciones, comentarios y aislamiento. El resultado del nuevo commit se registra al terminar su CI. El script de concurrencia ahora carga todas las migraciones, comprueba espera real por bloqueo y añade cierre contra contabilización tardía.
+La ampliación pasó localmente `npm run typecheck`, `npm run lint`, `npm test` (70 pruebas en 4 archivos), `npm run build`, `npm run format:check` y `git diff --check`; `npm audit --omit=dev` reportó 0 vulnerabilidades. Incluye pruebas de borradores, cierres, reportes, invitaciones, comentarios y aislamiento. El CI `39338056284` confirmó las 70 pruebas y los cuatro casos de concurrencia real; sus E2E detectaron que las descargas validaban filtros antes de comprobar sesión. Se corrigió el orden y se repite CI. El script de concurrencia ahora carga todas las migraciones, comprueba espera real por bloqueo y añade cierre contra contabilización tardía.
 
 Restricciones locales: Chromium CLI no inicia por permisos macOS MachPortRendezvous; PostgreSQL nativo desechable no inicializa por shmget. Esos casos se ejecutan en CI, sin eludir el aislamiento local. La inspección del navegador integrado verificó inicio y configuración en móvil/escritorio; no equivale a una sesión Supabase autenticada.
 

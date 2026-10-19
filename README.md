@@ -66,6 +66,7 @@ Los tests unitarios/de SQL usan PGlite (PostgreSQL embebido) con Auth y tablas S
 - [Modelo de datos](docs/DATABASE.md)
 - [Instalación y despliegue](docs/DEPLOYMENT.md)
 - [Estado, pruebas y pendientes](docs/PROGRESS.md)
+- [Circuito de aceptación con Supabase](docs/ACCEPTANCE.md)
 - [Especificación original](docs/REQUIREMENTS.md)
 - [Reglas para continuar el desarrollo](AGENTS.md)
 

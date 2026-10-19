@@ -2,8 +2,8 @@ import "server-only";
 import { requireUser } from "@/lib/auth";
 import { reportFilters, reportSchema } from "@/lib/domain/reports";
 export async function getReport(raw: Record<string, string | undefined>) {
-  const v = reportFilters.parse(raw);
   const { supabase } = await requireUser();
+  const v = reportFilters.parse(raw);
   const { data, error } = await supabase.rpc("financial_report", {
     p_company: v.company || null,
     p_fund: v.fund || null,
