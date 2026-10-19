@@ -15,9 +15,24 @@ No se ha creado un proyecto Supabase o Vercel desde esta sesión. Al publicar la
 7. Crear el usuario inicial desde Authentication → Users utilizando un correo bajo control del propietario. El propietario introduce su contraseña fuera del chat. Verificar el UUID y ejecutar `supabase/bootstrap-owner.sql` sustituyendo únicamente el UUID. El script se niega a correr con el marcador o si ya existe propietario. Codex puede realizar este paso una vez que tenga una conexión autorizada.
 8. En Authentication → URL Configuration, Site URL debe coincidir con `NEXT_PUBLIC_APP_URL`. Permitir exactamente `http://localhost:3000/auth/callback` en desarrollo y la URL `/auth/callback` del dominio de pruebas publicado. No usar comodines para dominios ajenos.
 9. Aplicar migraciones y comprobar el bucket `receipts`: privado, 10 MB, MIME JPG/PNG/PDF y políticas habilitadas. No crear un bucket público alternativo.
-10. Probar login, recuperación, empresa, usuario empleado, asignación, egreso, comprobante, revisión y arqueo. El envío de invitaciones desde la app aún está pendiente; para esta verificación crear cuentas de prueba desde Auth y asignarlas por UUID.
+10. Probar login, recuperación, empresa, usuario empleado, asignación, egreso, comprobante, revisión y arqueo. Para probar invitaciones, configurar `SUPABASE_SERVICE_ROLE_KEY` solo en el entorno del servidor y SMTP autorizado. El administrador puede invitar desde Empresas; nunca se usa esta clave para consultas o movimientos financieros.
 
 La región está disponible según la [documentación oficial de Supabase](https://supabase.com/docs/guides/platform/regions). La elección inicial es una decisión de arquitectura, no una medición de latencia.
+
+## Plantillas de correo
+
+Configurar las plantillas de Supabase para que los enlaces lleguen al callback de servidor con token hash. Ejemplo de enlace de invitación:
+
+```html
+<a
+  href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=invite&next=/auth/password"
+  >Aceptar invitación</a
+>
+```
+
+Para recuperación utilizar `type=recovery` y el mismo destino `/auth/password`. El callback acepta exclusivamente esos tipos y verifica el token en Supabase; el destino permitido es local. Site URL debe apuntar al entorno correcto. Probar con cuentas de prueba antes de enviar invitaciones reales. Consultar [plantillas oficiales](https://supabase.com/docs/guides/auth/auth-email-templates).
+
+Las invitaciones de empresa vencen a los 7 días; el token de Auth tiene su propio vencimiento. Un fallo de correo deja la invitación pendiente y se informa. Una cuenta existente puede iniciar sesión y aceptar la invitación con correo verificado; una invitación no cambia el rol ni reactiva una membresía existente.
 
 ## Vercel
 
@@ -25,7 +40,7 @@ La región está disponible según la [documentación oficial de Supabase](https
 2. Revisar primero el proyecto existente **cuadria** asociado a `Lgomezg321/cuadria`. No crear un quinto proyecto. Si el propietario confirma que ninguno de los existentes corresponde a esta instalación, importar exclusivamente ese repositorio.
 3. Framework: Next.js. Root Directory: raíz del repositorio. Node.js: 24.x. Install: `npm ci`. Build: `npm run build`. Output Directory: automático.
 4. Para la primera prueba, desplegar la rama `codex/cuadria-foundation` como Preview. Mantener el control de acceso de previews disponible en la cuenta. No declarar producción lista porque una preview compile.
-5. Configurar las tres variables de `.env.example`. `NEXT_PUBLIC_APP_URL` debe ser el origen HTTPS exacto de ese entorno. Utilizar Supabase de desarrollo para Preview; separar producción más adelante.
+5. Configurar las variables públicas de `.env.example` y, para invitaciones, la variable administrativa opcional solo de servidor. `NEXT_PUBLIC_APP_URL` debe ser el origen HTTPS exacto de ese entorno. Utilizar Supabase de desarrollo para Preview; separar producción más adelante.
 6. Configurar Functions Region en Washington, D.C./iad1 para acompañar us-east-1. No cambiar la región de una base existente sin un plan de migración.
 7. Agregar el callback exacto en Supabase y volver a desplegar después de cambiar variables públicas: Next.js las incorpora durante la compilación.
 8. Verificar la URL desplegada, inicio/cierre de sesión, RPCs, lectura aislada y documentos privados. Revisar errores sin imprimir tokens o contraseñas.

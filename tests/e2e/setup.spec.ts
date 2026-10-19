@@ -23,6 +23,11 @@ test("rutas de datos protegidas sin configuración", async ({ page }) => {
     "/fondos",
     "/movimientos",
     "/auditoria",
+    "/borradores",
+    "/cierres",
+    "/reportes",
+    "/reportes/csv",
+    "/reportes/pdf",
   ]) {
     await page.goto(route);
     await expect(page).toHaveURL(/\/configuracion$/);

@@ -1,4 +1,18 @@
 const messages: Record<string, string> = {
+  INVITATION_RATE_LIMIT:
+    "Espera un minuto antes de volver a invitar al mismo correo.",
+  FUND_HAS_BALANCE:
+    "Transfiere o registra movimientos autorizados para vaciar el saldo antes de desactivar el fondo.",
+
+  DRAFT_CONFLICT:
+    "El borrador cambió en otra sesión. Recarga antes de continuar.",
+  UNREVIEWED_MOVEMENTS:
+    "Debes revisar todos los movimientos contabilizados del período antes de cerrarlo.",
+  INVALID_CUTOFF:
+    "La fecha de corte no es válida o ya pertenece a un período cerrado.",
+  CHECK_ALREADY_APPROVED:
+    "Este arqueo o conciliación ya fue aprobado; su historial permanece cerrado.",
+
   FORBIDDEN: "No tienes permiso para realizar esta operación.",
   INVALID_MEMBER:
     "El usuario debe pertenecer a la empresa con rol de empleado.",

@@ -5,6 +5,11 @@
 1. `202610190001_core.sql`: dominio monetario, esquema relacional, permisos, políticas RLS y funciones transaccionales.
 2. `202610190002_receipts.sql`: metadatos inmutables y bucket privado con políticas de lectura/carga.
 
+3. `202610190003_drafts_closures.sql`: borradores/versiones, revisión de arqueos y cierres congelados.
+4. `202610190004_reports.sql`: agregados y detalle paginado con RLS.
+5. `202610190005_administration.sql`: invitaciones, categorías, estado de fondos, directorio y alertas.
+6. `202610190006_audit_conversation.sql`: comentarios inmutables y detalle histórico autorizado.
+
 Las migraciones requieren Supabase con `auth.users`, `auth.uid()`, roles `anon`/`authenticated` y esquema Storage. Las pruebas locales crean sustitutos mínimos de estos elementos. No aplicar los sustitutos de pruebas sobre Supabase.
 
 ## Entidades
@@ -48,7 +53,13 @@ Un empleado ve fondos con asignación vigente. Al finalizar su asignación deja 
 
 Los triggers impiden cambiar o eliminar asientos, revisiones, arqueos, comprobantes y eventos, incluso por una escritura privilegiada accidental. El rol administrador de la aplicación no equivale a propietario PostgreSQL.
 
-No existen cierres de períodos todavía. `closed_through` es una barrera preparada en el motor y no tiene UI ni RPC de cierre. No se debe marcar una auditoría cerrada manualmente mediante ese campo. Falta implementar la entidad de cierre, sus totales y reglas de corrección.
+`period_closures` guarda fecha inclusive, corte anterior, saldo inicial, ingresos, egresos, transferencias/reversiones netas, saldo final, IDs incluidos y aprobador. `close_period` bloquea el fondo y los movimientos, exige revisión de operaciones contabilizadas y fija `closed_through`. Los totales permanecen inmutables. Una reversión posterior se contabiliza en su propia fecha abierta y no reescribe el cierre.
+
+`drafts` pertenece a su autor y no crea asientos hasta `submit_draft`. La versión evita sobrescribir ediciones concurrentes. `check_reviews` documenta decisiones sin cambiar saldos. `movement_comments` registra respuestas inmutables e idempotentes del autor o administrador; auditores solo consultan.
+
+`invitations` conserva destinatario, rol, vencimiento y estado. La aceptación usa exclusivamente el correo confirmado de auth.users; no usa metadata del cliente ni reemplaza membresías existentes. `member_directory` expone correos solo a administradores/auditores de la empresa.
+
+`financial_report` mantiene RLS, serializa dinero como texto, separa transferencias y reversiones, devuelve totales del período completo y hasta 200 asientos por página. Filtros de tipo/estado/categoría/autor afectan el detalle, no el saldo completo del fondo. `movement_detail` permite abrir registros históricos fuera del snapshot de 100, sin omitir RLS.
 
 ## Pruebas requeridas antes del piloto
 

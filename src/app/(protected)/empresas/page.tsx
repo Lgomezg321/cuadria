@@ -1,3 +1,5 @@
+import { inviteEmployee, acceptInvitations } from "@/app/invitation-actions";
+import { requireUser } from "@/lib/auth";
 import { getSnapshot } from "@/lib/data";
 import { PageHeader, Empty } from "@/components/shell";
 import { ActionForm, Field } from "@/components/action-form";
@@ -7,6 +9,13 @@ export default async function Companies() {
   const admin = data.companies.filter((c) =>
     data.memberships.some((m) => m.company_id === c.id && m.role === "admin"),
   );
+  const { supabase } = await requireUser();
+  const { data: invitations } = await supabase
+    .from("invitations")
+    .select("id,email,role,accepted_at,revoked_at")
+    .is("accepted_at", null)
+    .is("revoked_at", null)
+    .limit(100);
   return (
     <>
       <PageHeader
@@ -14,6 +23,40 @@ export default async function Companies() {
         title="Empresas"
         description="Cada empresa conserva sus propios fondos, miembros y registros."
       />
+      <form action={acceptInvitations} className="mb-6">
+        <button className="text-sm font-semibold text-emerald-800 underline">
+          Aceptar invitaciones para mi correo verificado
+        </button>
+      </form>
+      {admin.length > 0 && (
+        <section className="card mb-8">
+          <h2 className="mb-5 font-semibold">Invitar a una persona</h2>
+          <ActionForm action={inviteEmployee} submit="Enviar invitación">
+            <Select name="company" label="Empresa" options={admin} />
+            <Field name="email" type="email" label="Correo electrónico" />
+            <Select
+              name="role"
+              label="Rol"
+              options={[
+                { id: "employee", name: "Empleado" },
+                { id: "auditor", name: "Auditor" },
+                { id: "admin", name: "Administrador" },
+              ]}
+            />
+          </ActionForm>
+          {invitations?.map((i) => (
+            <div className="mt-6 border-t pt-4" key={i.id}>
+              <p className="mb-3 text-sm">{i.email} · Invitación pendiente</p>
+              <ActionForm
+                operation="revokeInvitation"
+                submit="Revocar invitación"
+              >
+                <input type="hidden" name="id" value={i.id} />
+              </ActionForm>
+            </div>
+          ))}
+        </section>
+      )}
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="space-y-4">
           {data.companies.length ? (
@@ -51,9 +94,9 @@ export default async function Companies() {
           <section className="card">
             <h2 className="mb-3 font-semibold">Asignar usuario existente</h2>
             <p className="mb-5 text-xs leading-6 text-stone-500">
-              La invitación por correo todavía no está habilitada. Utiliza el
-              identificador de un usuario creado en Supabase Auth por el
-              responsable de la instalación.
+              Para asignar una cuenta que ya existe, utiliza el identificador de
+              un usuario creado en Supabase Auth por el responsable de la
+              instalación.
             </p>
             <ActionForm operation="member" submit="Asignar membresía">
               <Select name="company" label="Empresa" options={admin} />

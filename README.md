@@ -4,7 +4,7 @@ Administrador de caja menor para empleados y supervisión de su superior.
 
 Plataforma web multiempresa para administrar fondos de efectivo y cuentas operativas en Colombia. Idioma español, COP enteros y zona horaria America/Bogota.
 
-**Estado:** fase 1 implementada; primera base de las fases 2–5 desarrollada y probada localmente. Aún no hay proyecto Supabase conectado ni despliegue Vercel verificado. El MVP completo y el piloto con dinero real **no están aprobados**. Consulta [el progreso detallado](docs/PROGRESS.md).
+**Estado:** base funcional ampliada con borradores, auditoría, cierres, reportes e invitaciones. CI de la base confirmado; validación Supabase y URL pública Vercel pendientes. El MVP completo y el piloto con dinero real **no están aprobados**. Consulta [el progreso detallado](docs/PROGRESS.md).
 
 ## Implementación disponible
 
@@ -14,6 +14,9 @@ Plataforma web multiempresa para administrar fondos de efectivo y cuentas operat
 - Formularios conectados a RPCs de Supabase para crear empresas/fondos, asignar usuarios existentes, contabilizar, revisar, reversar y declarar saldos.
 - Motor transaccional, idempotencia, bloqueo de fondos en orden estable, protección de sobregiros y cantidades exactas.
 - Comprobantes privados JPG/PNG/PDF, máximo 10 MB, reserva de ruta y enlace temporal de 60 segundos.
+- Borradores con versión, revisión de arqueos, cierres de períodos inmutables y respuestas a observaciones.
+- Invitaciones verificadas por correo, categorías, estado de fondos y alertas operativas.
+- Reportes filtrables con detalle paginado, exportación CSV de página actual y PDF de resumen por fondo.
 - No hay datos de demostración ni sustitución de la base de datos por almacenamiento del navegador.
 
 ## Instalación
@@ -36,7 +39,7 @@ Abre http://localhost:3000. Sin las variables Supabase, la aplicación muestra l
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Clave pública sujeta a RLS                                      |
 | `NEXT_PUBLIC_APP_URL`                  | Origen exacto de esta instalación; localhost:3000 en desarrollo |
 
-No se requiere una clave `service_role` para las operaciones de la aplicación implementadas. No guardar secretos en Git ni pegarlos en el chat. La creación del propietario se realiza por una vía privilegiada separada, descrita en [despliegue](docs/DEPLOYMENT.md).
+`SUPABASE_SERVICE_ROLE_KEY` es opcional y se utiliza exclusivamente en servidor para enviar invitaciones mediante Auth Admin. Las operaciones financieras y consultas usan la sesión del usuario y no requieren esa clave. Configurar también SMTP autorizado para correo. No guardar secretos en Git ni pegarlos en el chat. La creación del propietario se realiza por una vía privilegiada separada, descrita en [despliegue](docs/DEPLOYMENT.md).
 
 ## Comandos
 

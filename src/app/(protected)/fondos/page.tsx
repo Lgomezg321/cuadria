@@ -107,12 +107,35 @@ export default async function Funds() {
           </section>
         )}
       </div>
+      {admin.length > 0 && (
+        <section className="card mt-8">
+          <h2 className="mb-5 font-semibold">Crear categoría</h2>
+          <ActionForm operation="category" submit="Crear categoría">
+            <Select name="company" label="Empresa" options={admin} />
+            <Field name="name" label="Nombre de categoría" />
+          </ActionForm>
+        </section>
+      )}
+      {adminFunds.length > 0 && (
+        <section className="card mt-8">
+          <h2 className="mb-5 font-semibold">Estado del fondo</h2>
+          <ActionForm operation="fundStatus" submit="Actualizar estado">
+            <Select name="fund" label="Fondo" options={adminFunds} />
+            <Select
+              name="active"
+              label="Estado"
+              options={[
+                { id: "true", name: "Activo" },
+                { id: "false", name: "Inactivo (requiere saldo cero)" },
+              ]}
+            />
+          </ActionForm>
+        </section>
+      )}
       {data.checks.length > 0 && (
         <div className="mt-8 overflow-x-auto rounded-xl border bg-white">
           <table className="w-full">
-            <caption>
-              Arqueos y conciliaciones registrados · sin aprobación
-            </caption>
+            <caption>Arqueos y conciliaciones registrados</caption>
             <thead>
               <tr>
                 <th>Fondo</th>

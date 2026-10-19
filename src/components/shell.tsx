@@ -16,6 +16,9 @@ const links = [
   { href: "/fondos", label: "Fondos", icon: Wallet },
   { href: "/movimientos", label: "Movimientos", icon: ArrowLeftRight },
   { href: "/auditoria", label: "Auditoría", icon: ScanLine },
+  { href: "/borradores", label: "Borradores", icon: ArrowLeftRight },
+  { href: "/cierres", label: "Cierres", icon: ShieldCheck },
+  { href: "/reportes", label: "Reportes", icon: ScanLine },
 ];
 export function Brand() {
   return (

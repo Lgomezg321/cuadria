@@ -68,6 +68,95 @@ export async function mutate(
   let args: Record<string, unknown>;
   try {
     switch (op) {
+      case "movementComment": {
+        const v = z
+          .object({
+            id: uuid,
+            movement: uuid,
+            body: z.string().trim().min(3).max(2000),
+          })
+          .parse(raw);
+        name = "comment_movement";
+        args = { p_id: v.id, p_movement: v.movement, p_body: v.body };
+        break;
+      }
+      case "draft": {
+        const v = schemas.movement
+          .omit({ key: true })
+          .extend({ id: uuid, version: z.coerce.number().int().min(0) })
+          .parse(raw);
+        name = "save_draft";
+        args = {
+          p_id: v.id,
+          p_version: v.version,
+          p_fund: v.fund,
+          p_destination: v.kind === "transfer" ? v.destination || null : null,
+          p_category: v.category || null,
+          p_kind: v.kind,
+          p_amount: v.amount,
+          p_concept: v.concept,
+          p_date: v.date,
+        };
+        break;
+      }
+      case "submitDraft": {
+        const v = z
+          .object({ id: uuid, version: z.coerce.number().int().positive() })
+          .parse(raw);
+        name = "submit_draft";
+        args = { p_id: v.id, p_version: v.version };
+        break;
+      }
+      case "closure": {
+        const v = z
+          .object({
+            fund: uuid,
+            cutoff: z.iso.date(),
+            note: z.string().max(2000),
+          })
+          .parse(raw);
+        name = "close_period";
+        args = { p_fund: v.fund, p_cutoff: v.cutoff, p_note: v.note };
+        break;
+      }
+      case "checkReview": {
+        const v = z
+          .object({
+            check: uuid,
+            decision: z.enum(["approved", "observed"]),
+            comment: z.string().max(2000),
+          })
+          .parse(raw);
+        name = "review_check";
+        args = {
+          p_check: v.check,
+          p_decision: v.decision,
+          p_comment: v.comment,
+        };
+        break;
+      }
+      case "category": {
+        const v = z
+          .object({ company: uuid, name: z.string().trim().min(2).max(100) })
+          .parse(raw);
+        name = "create_category";
+        args = { p_company: v.company, p_name: v.name };
+        break;
+      }
+      case "fundStatus": {
+        const v = z
+          .object({ fund: uuid, active: z.enum(["true", "false"]) })
+          .parse(raw);
+        name = "set_fund_active";
+        args = { p_fund: v.fund, p_active: v.active === "true" };
+        break;
+      }
+      case "revokeInvitation": {
+        const v = z.object({ id: uuid }).parse(raw);
+        name = "revoke_invitation";
+        args = { p_id: v.id };
+        break;
+      }
       case "company": {
         const v = schemas.company.parse(raw);
         name = "create_company";
@@ -170,6 +259,7 @@ export async function login(
       error:
         "No fue posible iniciar sesión. Comprueba tus credenciales e inténtalo de nuevo.",
     };
+  await client.rpc("accept_invitations");
   redirect("/panel");
 }
 export async function logout() {

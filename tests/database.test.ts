@@ -63,6 +63,27 @@ beforeAll(async () => {
   await db.exec(
     readFileSync("supabase/migrations/202610190002_receipts.sql", "utf8"),
   );
+  await db.exec(
+    readFileSync(
+      "supabase/migrations/202610190003_drafts_closures.sql",
+      "utf8",
+    ),
+  );
+  await db.exec(
+    readFileSync("supabase/migrations/202610190004_reports.sql", "utf8"),
+  );
+  await db.exec(
+    "alter table auth.users add column email text;alter table auth.users add column email_confirmed_at timestamptz;",
+  );
+  await db.exec(
+    readFileSync("supabase/migrations/202610190005_administration.sql", "utf8"),
+  );
+  await db.exec(
+    readFileSync(
+      "supabase/migrations/202610190006_audit_conversation.sql",
+      "utf8",
+    ),
+  );
   for (const id of [owner, employee, outsider, auditor])
     await db.query("insert into auth.users values($1)", [id]);
   await db.query("insert into public.installation_owners values($1)", [owner]);
@@ -109,6 +130,345 @@ afterAll(async () => {
   await db.close();
 });
 describe("motor financiero ejecutado en PostgreSQL embebido", () => {
+  it("responder observaciones conserva dinero, estado e idempotencia", async () => {
+    const m = await post();
+    await user(owner);
+    await db.query(
+      "select public.review_movement($1,'observed','Falta descripción')",
+      [m],
+    );
+    await user(employee);
+    const id = randomUUID();
+    for (let i = 0; i < 2; i++)
+      await db.query(
+        "select public.comment_movement($1,$2,'Transporte de documentos')",
+        [id, m],
+      );
+    const detail = await scalar<{
+      movement: { amount: string; review_status: string };
+      comments: unknown[];
+      reviews: unknown[];
+    }>("select public.movement_detail($1) as value", [m]);
+    expect(detail.movement.amount).toBe("200");
+    expect(detail.movement.review_status).toBe("observed");
+    expect(detail.comments).toHaveLength(1);
+    expect(detail.reviews).toHaveLength(1);
+    expect(await balance()).toBe("800");
+  });
+  it("detalle e historial no filtran movimientos ajenos", async () => {
+    const m = await post();
+    await user(outsider);
+    expect(
+      await scalar("select public.movement_detail($1) as value", [m]),
+    ).toBeNull();
+    await expect(
+      db.query(
+        "select public.comment_movement($1,$2,'Comentario no autorizado')",
+        [randomUUID(), m],
+      ),
+    ).rejects.toThrow("FORBIDDEN");
+  });
+  it("auditor consulta historial pero no escribe respuestas", async () => {
+    const m = await post();
+    await user(auditor);
+    expect(
+      await scalar("select public.movement_detail($1) as value", [m]),
+    ).not.toBeNull();
+    await expect(
+      db.query(
+        "select public.comment_movement($1,$2,'Comentario no autorizado')",
+        [randomUUID(), m],
+      ),
+    ).rejects.toThrow("FORBIDDEN");
+  });
+  it("un comentario conserva su contenido ante reintentos conflictivos", async () => {
+    const m = await post(),
+      id = randomUUID();
+    await db.query("select public.comment_movement($1,$2,'Original')", [id, m]);
+    await expect(
+      db.query("select public.comment_movement($1,$2,'Cambiar texto')", [
+        id,
+        m,
+      ]),
+    ).rejects.toThrow("IDEMPOTENCY_CONFLICT");
+  });
+  it("comentarios inmutables incluso con escritura privilegiada accidental", async () => {
+    const m = await post();
+    await db.query("select public.comment_movement($1,$2,'Explicación')", [
+      randomUUID(),
+      m,
+    ]);
+    await db.exec("reset role");
+    await expect(
+      db.exec("delete from public.movement_comments"),
+    ).rejects.toThrow("IMMUTABLE_RECORD");
+  });
+  it("invitar requiere un administrador autorizado", async () => {
+    await expect(
+      db.query(
+        "select public.create_invitation($1,'nuevo@example.test','admin')",
+        [company],
+      ),
+    ).rejects.toThrow("FORBIDDEN");
+  });
+  it("aceptar una invitación exige correo verificado y conserva el rol autorizado", async () => {
+    await db.exec("reset role");
+    await db.query(
+      "update auth.users set email='nuevo@example.test',email_confirmed_at=now() where id=$1",
+      [outsider],
+    );
+    await user(owner);
+    await db.query(
+      "select public.create_invitation($1,'nuevo@example.test','employee')",
+      [company],
+    );
+    await user(outsider);
+    expect(
+      await scalar<number>("select public.accept_invitations() as value"),
+    ).toBe(1);
+    expect(
+      await scalar(
+        "select role as value from public.memberships where company_id=$1 and user_id=$2",
+        [company, outsider],
+      ),
+    ).toBe("employee");
+    expect(
+      await scalar<number>("select public.accept_invitations() as value"),
+    ).toBe(0);
+  });
+  it("un correo sin verificar no obtiene membresía", async () => {
+    await db.exec("reset role");
+    await db.query(
+      "update auth.users set email='nuevo@example.test' where id=$1",
+      [outsider],
+    );
+    await user(owner);
+    await db.query(
+      "select public.create_invitation($1,'nuevo@example.test','admin')",
+      [company],
+    );
+    await user(outsider);
+    await expect(
+      db.query("select public.accept_invitations()"),
+    ).rejects.toThrow("EMAIL_NOT_VERIFIED");
+  });
+  it("invitación revocada no concede acceso", async () => {
+    await db.exec("reset role");
+    await db.query(
+      "update auth.users set email='nuevo@example.test',email_confirmed_at=now() where id=$1",
+      [outsider],
+    );
+    await user(owner);
+    const id = await scalar(
+      "select public.create_invitation($1,'nuevo@example.test','employee') as value",
+      [company],
+    );
+    await db.query("select public.revoke_invitation($1)", [id]);
+    await user(outsider);
+    expect(
+      await scalar<number>("select public.accept_invitations() as value"),
+    ).toBe(0);
+  });
+  it("las invitaciones no elevan silenciosamente una membresía existente", async () => {
+    await db.exec("reset role");
+    await db.query(
+      "update auth.users set email='empleado@example.test',email_confirmed_at=now() where id=$1",
+      [employee],
+    );
+    await user(owner);
+    await db.query(
+      "select public.create_invitation($1,'empleado@example.test','admin')",
+      [company],
+    );
+    await user(employee);
+    await db.query("select public.accept_invitations()");
+    expect(
+      await scalar(
+        "select role as value from public.memberships where user_id=$1 and company_id=$2",
+        [employee, company],
+      ),
+    ).toBe("employee");
+  });
+  it("no permite desactivar fondos con saldo", async () => {
+    await user(owner);
+    await expect(
+      db.query("select public.set_fund_active($1,false)", [fund]),
+    ).rejects.toThrow("FUND_HAS_BALANCE");
+  });
+  it("las alertas distinguen pendiente, falta de comprobante y falta de verificación", async () => {
+    await post();
+    const a = await scalar<{
+      pending: number;
+      missing_receipts: number;
+      unverified_funds: number;
+    }>("select public.alerts_snapshot() as value");
+    expect(a.pending).toBe(1);
+    expect(a.missing_receipts).toBe(1);
+    expect(a.unverified_funds).toBe(2);
+  });
+
+  it("el reporte consolida transferencias sin convertirlas en ingresos", async () => {
+    await post("transfer", "200", randomUUID(), fund, destination);
+    await post("income", "50");
+    const r = await scalar<{
+      totals: {
+        income: string;
+        transfers_net: string;
+        closing_balance: string;
+      }[];
+    }>(
+      "select public.financial_report(null,null,current_date,current_date) as value",
+    );
+    expect(r.totals.reduce((a, f) => a + BigInt(f.income), 0n)).toBe(50n);
+    expect(r.totals.reduce((a, f) => a + BigInt(f.transfers_net), 0n)).toBe(0n);
+    expect(r.totals.reduce((a, f) => a + BigInt(f.closing_balance), 0n)).toBe(
+      1150n,
+    );
+  });
+  it("el reporte no revela fondos de otra empresa mediante parámetros", async () => {
+    const r = await scalar<{ totals: unknown[] }>(
+      "select public.financial_report($1,null,current_date,current_date) as value",
+      [otherCompany],
+    );
+    expect(r.totals).toEqual([]);
+  });
+
+  it("guardar y editar borrador no cambia el saldo; enviar dos veces contabiliza una vez", async () => {
+    const id = randomUUID();
+    const args = [
+      id,
+      0,
+      fund,
+      null,
+      null,
+      "expense",
+      "200",
+      "Borrador de compra",
+    ];
+    await db.query(
+      "select public.save_draft($1,$2,$3,$4,$5,$6,$7,$8,current_date)",
+      args,
+    );
+    expect(await balance()).toBe("1000");
+    await db.query(
+      "select public.save_draft($1,1,$2,null,null,'expense','250','Compra editada',current_date)",
+      [id, fund],
+    );
+    const m = await scalar("select public.submit_draft($1,2) as value", [id]);
+    expect(
+      await scalar("select public.submit_draft($1,2) as value", [id]),
+    ).toBe(m);
+    expect(await balance()).toBe("750");
+  });
+  it("detecta edición de borrador con versión desactualizada", async () => {
+    const id = randomUUID();
+    const q =
+      "select public.save_draft($1,0,$2,null,null,'expense','200','Borrador',current_date)";
+    await db.query(q, [id, fund]);
+    await expect(db.query(q, [id, fund])).rejects.toThrow("DRAFT_CONFLICT");
+  });
+  it("otro usuario no puede enviar un borrador ajeno", async () => {
+    const id = randomUUID();
+    await db.query(
+      "select public.save_draft($1,0,$2,null,null,'expense','200','Borrador',current_date)",
+      [id, fund],
+    );
+    await user(owner);
+    await expect(
+      db.query("select public.submit_draft($1,1)", [id]),
+    ).rejects.toThrow("FORBIDDEN");
+  });
+  it("bloquea cierres con movimientos sin revisar", async () => {
+    await post();
+    await user(owner);
+    await expect(
+      db.query("select public.close_period($1,current_date,'Cierre')", [fund]),
+    ).rejects.toThrow("UNREVIEWED_MOVEMENTS");
+  });
+  it("congela cierre con totales exactos y no afecta saldo", async () => {
+    const m = await post();
+    await user(owner);
+    await db.query("select public.review_movement($1,'approved','Revisado')", [
+      m,
+    ]);
+    const id = await scalar(
+      "select public.close_period($1,current_date,'Cierre') as value",
+      [fund],
+    );
+    expect(
+      await scalar(
+        "select public.close_period($1,current_date,'Cierre') as value",
+        [fund],
+      ),
+    ).toBe(id);
+    const r = await db.query(
+      "select opening_balance::text,expenses::text,closing_balance::text from public.period_closures where id=$1",
+      [id],
+    );
+    expect(r.rows[0]).toEqual({
+      opening_balance: "1000",
+      expenses: "200",
+      closing_balance: "800",
+    });
+    expect(await balance()).toBe("800");
+  });
+  it("impide registrar movimientos tardíos dentro del cierre", async () => {
+    await user(owner);
+    await db.query("select public.close_period($1,current_date,'Cierre')", [
+      fund,
+    ]);
+    await user(employee);
+    await expect(post()).rejects.toThrow("PERIOD_CLOSED");
+  });
+  it("impide cambiar una revisión incluida en un cierre", async () => {
+    const m = await post();
+    await user(owner);
+    await db.query("select public.review_movement($1,'approved','Revisado')", [
+      m,
+    ]);
+    await db.query("select public.close_period($1,current_date,'Cierre')", [
+      fund,
+    ]);
+    await expect(
+      db.query("select public.review_movement($1,'observed','Cambiar')", [m]),
+    ).rejects.toThrow("PERIOD_CLOSED");
+  });
+  it("un cierre no admite modificaciones silenciosas", async () => {
+    await user(owner);
+    await db.query("select public.close_period($1,current_date,'Cierre')", [
+      fund,
+    ]);
+    await db.exec("reset role");
+    await expect(
+      db.exec("update public.period_closures set note='Cambio'"),
+    ).rejects.toThrow("IMMUTABLE_RECORD");
+  });
+  it("empleado no puede aprobar cierres", async () => {
+    await expect(
+      db.query("select public.close_period($1,current_date,'Cierre')", [fund]),
+    ).rejects.toThrow("FORBIDDEN");
+  });
+  it("aprobar arqueo conserva diferencia y no cambia dinero", async () => {
+    const id = await scalar(
+      "select public.record_check($1,'900','Faltante') as value",
+      [fund],
+    );
+    await user(owner);
+    await db.query("select public.review_check($1,'approved','Revisado')", [
+      id,
+    ]);
+    expect(await balance()).toBe("1000");
+    expect(
+      await scalar(
+        "select difference::text as value from public.checks where id=$1",
+        [id],
+      ),
+    ).toBe("-100");
+    await expect(
+      db.query("select public.review_check($1,'observed','Cambiar')", [id]),
+    ).rejects.toThrow("CHECK_ALREADY_APPROVED");
+  });
+
   it("permite apertura cero sin asientos ficticios y reintento idempotente", async () => {
     await user(owner);
     const key = randomUUID();

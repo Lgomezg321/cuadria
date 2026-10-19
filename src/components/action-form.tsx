@@ -56,6 +56,7 @@ export function Field({
   defaultValue,
   placeholder,
   minLength,
+  maxLength,
 }: {
   label: string;
   name: string;
@@ -64,6 +65,7 @@ export function Field({
   defaultValue?: string;
   placeholder?: string;
   minLength?: number;
+  maxLength?: number;
 }) {
   return (
     <label className="field">
@@ -75,6 +77,7 @@ export function Field({
         defaultValue={defaultValue}
         placeholder={placeholder}
         minLength={minLength}
+        maxLength={maxLength}
         inputMode={
           name === "amount" || name === "opening" || name === "declared"
             ? "numeric"

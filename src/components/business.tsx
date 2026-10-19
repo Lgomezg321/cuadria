@@ -18,16 +18,18 @@ export function Select({
   name,
   options,
   optional = false,
+  defaultValue = "",
 }: {
   label: string;
   name: string;
   options: { id: string; name: string }[];
   optional?: boolean;
+  defaultValue?: string;
 }) {
   return (
     <label className="field">
       {label}
-      <select name={name} required={!optional} defaultValue="">
+      <select name={name} required={!optional} defaultValue={defaultValue}>
         <option value="">
           {optional ? "Sin seleccionar" : "Selecciona una opción"}
         </option>

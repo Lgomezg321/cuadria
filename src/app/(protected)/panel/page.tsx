@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/auth";
 import Link from "next/link";
 import { Plus, ArrowUpRight } from "lucide-react";
 import { PageHeader, Empty } from "@/components/shell";
@@ -7,6 +8,10 @@ import { sumCOP, formatCOP } from "@/lib/domain/money";
 import { MovementTable } from "@/components/business";
 export default async function Dashboard() {
   const data = await getSnapshot();
+  const { supabase } = await requireUser();
+  const { data: alerts, error: alertError } =
+    await supabase.rpc("alerts_snapshot");
+
   return (
     <>
       <PageHeader
@@ -41,6 +46,33 @@ export default async function Dashboard() {
           </div>
         ))}
       </div>
+      {!alertError && alerts && (
+        <section className="card mb-8">
+          <h2 className="mb-5 font-semibold">Requieren atención</h2>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[
+              ["Movimientos pendientes", alerts.pending],
+              ["Movimientos observados", alerts.observed],
+              ["Egresos sin comprobante cargado", alerts.missing_receipts],
+              [
+                "Fondos con diferencia en última declaración",
+                alerts.funds_with_difference,
+              ],
+              ["Sin verificación aprobada en 7 días", alerts.unverified_funds],
+            ].map(([label, value]) => (
+              <div key={String(label)}>
+                <p className="text-xs text-stone-500">{label}</p>
+                <p className="mt-2 text-2xl font-semibold">{String(value)}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      {alertError && (
+        <p role="alert" className="mb-6 text-sm text-red-800">
+          No fue posible consultar las alertas.
+        </p>
+      )}
       {data.funds.length === 0 ? (
         <Empty
           title="Tu operación comienza aquí"

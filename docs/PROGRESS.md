@@ -2,78 +2,63 @@
 
 Actualizado: 2026-10-19, America/Bogota.
 
-## Estado de la entrega
+## Estado real
 
-**Fase 1 implementada y compilable. Fases 2–5 con una primera implementación parcial. MVP completo no verificado. No aprobado para dinero real.**
+**Base funcional ampliada, con pruebas locales y CI. MVP completo aún no verificado y piloto con dinero real no aprobado.**
 
-Repositorio original verificado antes de modificar: `Lgomezg321/cuadria`, main `81928fb`, únicamente README.md y sin cambios locales. Se conservó su historia. Rama: `codex/cuadria-foundation`.
+Repositorio único: `Lgomezg321/cuadria`. Se conservó main original `81928fb`; implementación en `codex/cuadria-foundation`. No se integró main ni se reemplazó su historia.
 
-No existe un proyecto Supabase conectado a esta sesión ni una URL pública Vercel verificada. Se localizaron ambas integraciones y se propuso habilitarlas. Tras publicar la rama, GitHub reportó integraciones Vercel existentes para `cuadria`, `cuadria-caja`, `cuadria-app` y `cuadria-czyg`; esa evidencia actualiza la premisa inicial de que Vercel no existía. No se creó otro proyecto ni se inventaron credenciales.
+No hay conexión Supabase autorizada disponible en esta sesión. No se aplicaron migraciones a una base externa ni se enviaron invitaciones reales. GitHub confirmó compilaciones Vercel automáticas existentes para `cuadria`, `cuadria-caja`, `cuadria-app` y `cuadria-czyg`. No se creó otro proyecto. Falta verificar el proyecto canónico, variables y circuito autenticado en la URL pública.
 
 ## Implementado
 
-- Next.js 16.4.2, React 19.3.0, TypeScript estricto/ES2022, Tailwind, Button según shadcn/ui, Radix y Lucide.
-- Identidad CUADRIA, inicio, navegación responsive, configuración explícita, errores y estados vacíos en español.
-- Auth SSR con cookies, renovación en Proxy, login/logout, recuperación y cambio de contraseña, páginas y acciones protegidas.
-- Migraciones con COP exactos; empresas, membresías, fondos, asignaciones históricas, categorías, movimientos, asientos, revisiones, arqueos/conciliaciones y auditoría.
-- RLS y revocación de escritura directa. RPCs autorizadas con search_path fijo. Bootstrap de propietario separado y manualmente verificable.
-- Formularios conectados a RPC para empresas, fondos (incluida apertura cero), asignaciones y membresías de usuarios Auth existentes.
-- Ingresos, egresos, transferencias, idempotencia por contenido, bloqueo de fondos, prevención de sobregiros, aprobación sin asientos adicionales y reversión compensatoria.
-- Arqueos y conciliaciones manuales al momento actual; saldo teórico congelado, sin ajustes automáticos.
-- Reserva y carga de JPG/PNG/PDF de hasta 10 MB, bucket privado, políticas por movimiento y enlaces de 60 segundos. No sobrescritura ni borrado desde sesiones de aplicación.
-- Dashboard de saldos autorizados y últimos 100 movimientos; revisión administrativa de operaciones ajenas y acceso a comprobantes.
-- Pruebas unitarias/SQL, pruebas E2E de instalación y script de concurrencia. Workflow Quality con PostgreSQL 17, build, E2E y auditoría de dependencias de producción.
-- README, AGENTS, arquitectura, modelo, despliegue y especificación original guardada.
+- Next.js 16.4.2, React 19.3.0, TypeScript estricto/ES2022, Tailwind, Radix/Lucide y componente Button según shadcn/ui. Identidad CUADRIA y navegación responsive en español.
+- Auth SSR, cookies, renovación en Proxy, login/logout, recuperación/cambio de contraseña y callback PKCE o token hash. Páginas, descargas y acciones verifican la sesión.
+- Seis migraciones: empresas, membresías, fondos, asignaciones históricas, categorías, movimientos, asientos, comprobantes, revisiones, arqueos, borradores, cierres, invitaciones y comentarios.
+- RLS, escrituras exclusivamente por RPC autorizadas, search_path fijo y bootstrap de propietario separado. El propietario no recibe lectura implícita de empresas sin membresía.
+- COP enteros exactos, JSON monetario en texto, bigint, operaciones atómicas, bloqueo de fondos, no sobregiros, idempotencia por actor/clave/contenido y reversión compensatoria.
+- Borradores propios con versión optimista: guardar no contabiliza; enviar utiliza el motor financiero y es idempotente.
+- Invitaciones por correo desde el servidor, rol persistido antes del envío, vencimiento y revocación. Aceptación exige correo verificado; no eleva ni reactiva membresías existentes. Requiere SMTP y clave administrativa exclusivamente de servidor.
+- Creación de categorías y activación/desactivación de fondos; desactivar exige saldo cero. Membresías y asignaciones por UUID; directorio SQL disponible, presentación de perfiles pendiente.
+- Arqueos y conciliaciones actuales capturan saldo bajo bloqueo. Un administrador distinto del autor puede observar/aprobar; aprobar no ajusta dinero.
+- Cierres por fondo y fecha inclusive: rechazan movimientos pendientes, congelan totales e IDs, impiden registros tardíos y cambios de revisión en períodos cerrados. Una corrección posterior requiere reversión fechada en período abierto.
+- Auditoría de dos paneles: movimiento y decisiones junto a comprobantes privados, navegación reciente, detalle histórico desde reportes, respuestas inmutables del autor/administrador. Auditor tiene solo lectura.
+- JPG/PNG/PDF privados hasta 10 MB; validación de tamaño/MIME/firma inicial, enlaces de 60 segundos y sin sobrescritura/borrado desde la aplicación.
+- Alertas reales: pendientes, observados, egresos sin objeto comprobante, diferencias y fondos sin verificación aprobada reciente (7 días).
+- Reportes por empresa, fondo y período: saldos, aperturas, ingresos, egresos, transferencias y reversiones separados. Detalle filtrable por tipo, revisión, categoría y autor, paginado de 200 en 200. CSV con protección frente a fórmulas; PDF de resumen por fondo.
+- CI con PostgreSQL 17, lint, tipos, pruebas SQL/unitarias, concurrencia entre conexiones, build, Playwright desktop/móvil y auditoría de dependencias de producción.
 
-## Verificaciones ejecutadas localmente
+## Evidencia de validación
 
-| Verificación                        | Resultado                                                                                                                         |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run lint`                      | Aprobada                                                                                                                          |
-| `npm run typecheck`                 | Aprobada                                                                                                                          |
-| `npm test`                          | 44 pruebas aprobadas en 3 archivos                                                                                                |
-| `npm run build`                     | Aprobada, build optimizado de Next.js                                                                                             |
-| `npm audit --omit=dev`              | 0 vulnerabilidades reportadas                                                                                                     |
-| `npm audit` completo                | 5 avisos high en cadena de lint derivada de braces; npm no ofrece parche compatible                                               |
-| Playwright, 6 casos desktop/móvil   | Intentados; navegador no arrancó por restricción macOS MachPortRendezvous/Permission denied. No aprobados localmente              |
-| PostgreSQL nativo para concurrencia | Intentado con servidor desechable; initdb bloqueado por shmget/Operation not permitted. No se ejecutaron los casos localmente     |
-| Navegador integrado                 | Inicio inspeccionado a ancho móvil y escritorio; navegación a configuración verificada; configuración a 390 px sin desbordamiento |
-| HTTP local                          | /panel devuelve 307 a /configuracion; /login devuelve 200 sin conexión configurada                                                |
+El commit `bf93a3b6b775b6dabd078be955c00a8f9a2c56c1` completó satisfactoriamente [Quality 39318345627](https://github.com/Lgomezg321/cuadria/actions/runs/39318345627): 44 pruebas SQL/unitarias, 3 casos de concurrencia en PostgreSQL 17.11, 6 E2E desktop/móvil, lint, tipos, build y auditoría de producción.
 
-PGlite ejecuta SQL PostgreSQL real, pero Auth y Storage usan tablas/funciones mínimas de prueba. Los 44 casos no equivalen a un circuito Supabase completo ni a concurrencia entre conexiones.
+La ampliación pasó localmente `npm run typecheck`, `npm run lint`, `npm test` (70 pruebas en 4 archivos), `npm run build`, `npm run format:check` y `git diff --check`; `npm audit --omit=dev` reportó 0 vulnerabilidades. Incluye pruebas de borradores, cierres, reportes, invitaciones, comentarios y aislamiento. El resultado del nuevo commit se registra al terminar su CI. El script de concurrencia ahora carga todas las migraciones, comprueba espera real por bloqueo y añade cierre contra contabilización tardía.
 
-Se detectó y corrigió una colisión entre variable PL/pgSQL y alias en la reversión. Las pruebas de reversión ahora pasan. Se ajustó ES2022 y se eliminó un caché TypeScript generado con el target anterior antes de verificar nuevamente.
+Restricciones locales: Chromium CLI no inicia por permisos macOS MachPortRendezvous; PostgreSQL nativo desechable no inicializa por shmget. Esos casos se ejecutan en CI, sin eludir el aislamiento local. La inspección del navegador integrado verificó inicio y configuración en móvil/escritorio; no equivale a una sesión Supabase autenticada.
 
-## Pendientes funcionales
+PGlite ejecuta SQL PostgreSQL real con sustitutos mínimos de Auth/Storage. No demuestra entrega de correo, Storage HTTP ni autorización JWT de Supabase. Los E2E actuales verifican el entorno sin configurar y la protección de sus rutas.
 
-- Conectar Supabase, aplicar migraciones y validar usuarios/sesiones/Storage reales.
-- Invitación de empleados desde la aplicación, perfiles y presentación de nombres; hoy la asignación usa UUID de usuarios Auth existentes.
-- Borradores y su edición/envío; gestión completa de categorías y desactivación de fondos.
-- Visor integrado de dos paneles, historial de revisiones visible, respuesta a observaciones.
-- Revisión/aprobación de arqueos, conciliación por fecha histórica y partidas pendientes.
-- Cierres de períodos con totales congelados y reglas completas de registros tardíos. `closed_through` es solo una barrera preparada, no un cierre implementado.
-- Filtros, paginación, indicadores por período, alertas configurables, reportes CSV/PDF y PWA.
-- E2E autenticado del circuito de 20 pasos, pruebas Supabase reales, recuperación de respaldos y piloto supervisado.
-- Despliegue Vercel, verificación de URL y variables del entorno de pruebas.
+## Límites y pendientes
 
-## Limitaciones conocidas
+- Conectar Supabase de desarrollo, aplicar las seis migraciones y probar Auth, correo, RPCs, Storage privado y aislamiento mediante llamadas HTTP reales.
+- Circuito autenticado de aceptación de 20 pasos, pruebas de recuperación/restauración y piloto supervisado.
+- Perfiles y nombres legibles, directorio en formularios, retirada de membresías, edición completa de categorías y administración ampliada.
+- Conciliación bancaria histórica, partidas pendientes y evidencias del arqueo; hoy se registra una declaración al momento actual.
+- Alertas configurables y notificaciones, PWA y experiencia móvil autenticada validada. No se implementa sincronización financiera offline.
+- Snapshot general: últimos 100 movimientos/arqueos/borradores/cierres. Los reportes consultan todo el período con detalle paginado; CSV exporta la página actual y totales completos. PDF contiene solo resumen. Exportación masiva y rendimiento a escala pendientes.
+- Visor muestra hasta 20 comprobantes. Su integración con Storage/PDF real sigue pendiente de validación. PDF de reportes usa Helvetica; caracteres fuera de su alfabeto se sustituyen por `?`.
+- Reserva de comprobante y carga son operaciones separadas; un fallo deja una reserva huérfana y se informa. Faltan estado explícito y reconciliación de cargas. Firma inicial no es antivirus ni parser completo.
+- Clave administrativa de invitaciones opcional y solo en servidor. Registrar invitación y enviar correo no es una transacción distribuida: si falla el envío, se conserva pendiente y se informa.
+- Avisos de desarrollo en @next/eslint-plugin-next → fast-glob → micromatch → braces; no aplicar el downgrade incompatible sugerido por npm. La auditoría de producción no reportó vulnerabilidades.
 
-- Reservar un comprobante y cargar el objeto no es una transacción distribuida. Una carga fallida deja una reserva y se informa al usuario; falta reconciliación de reservas huérfanas y estado explícito de carga.
-- Firma inicial de archivo no equivale a análisis antivirus ni parser completo.
-- El snapshot limita movimientos/arqueos a 100; no debe usarse como un reporte completo de período.
-- Avisos en dependencias de desarrollo: @next/eslint-plugin-next → fast-glob → micromatch → braces. No se aplicó el downgrade incompatible sugerido por npm. No se reportaron vulnerabilidades de dependencias de producción.
-- Las pruebas de CI deben comprobarse sobre el commit publicado; su configuración no demuestra que hayan pasado.
+## Publicación
 
-## Siguiente tarea
+Rama publicada en el repositorio existente. La creación de PR mediante la integración devolvió HTTP 403 `Resource not accessible by integration`; GitHub web no tenía sesión. No existe PR creado desde esta sesión. [Comparación preparada](https://github.com/Lgomezg321/cuadria/compare/main...codex/cuadria-foundation).
 
-Habilitar acceso a Supabase y Vercel. Crear o seleccionar **cuadria-dev**, aplicar migraciones, verificar el propietario y ejecutar un flujo real con administrador y empleado. Resolver los fallos encontrados antes de ampliar funcionalidad. Las instrucciones exactas, región propuesta y variables están en DEPLOYMENT.md; nunca solicitar secretos por chat.
+Se corrigió el lockfile inicial generado con npm 11.6: faltaban dependencias opcionales exigidas por npm 11.19 en Linux. Se regeneró en un directorio limpio y CI confirmó instalación reproducible.
 
-## Continuidad
+## Siguiente paso y continuidad
 
-Al retomar: leer AGENTS.md y este archivo; revisar Git y los resultados del workflow; confirmar si las integraciones ya fueron conectadas. No reconstruir el proyecto ni afirmar que los módulos parciales completan las fases correspondientes.
+Habilitar una conexión autorizada a Supabase y seleccionar/crear **cuadria-dev**. Seguir DEPLOYMENT, aplicar migraciones, verificar propietario y realizar el circuito administrador → empleado → borrador → egreso → comprobante → observación/respuesta → aprobación → arqueo → cierre → reporte. Después verificar la preview del proyecto Vercel canónico `cuadria`. Nunca solicitar secretos por chat.
 
-## Publicación y CI
-
-La rama fue publicada en el repositorio existente. Crear PR mediante la integración devolvió HTTP 403, Resource not accessible by integration; la sesión web de GitHub está sin iniciar. No se creó PR ni se integró main. La comparación está en https://github.com/Lgomezg321/cuadria/compare/main...codex/cuadria-foundation .
-
-El primer CI falló en npm ci: al lockfile generado con npm 11.6 le faltaban dependencias opcionales @emnapi/core y @emnapi/runtime exigidas por npm 11.19 en Linux. Se regeneró desde un directorio limpio con npm 11.19 y se validó resolución para Linux x64. Se vuelve a ejecutar Quality con el lockfile corregido.
+Al retomar: leer AGENTS y este archivo, revisar Git y el último CI; continuar la implementación existente. No declarar el MVP terminado por una compilación exitosa ni por pruebas con sustitutos de Auth/Storage.

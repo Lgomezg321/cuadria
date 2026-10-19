@@ -8,7 +8,7 @@ Next.js 16.4.2 y React 19.3.0, versiones estables resueltas desde npm al inicial
 
 ## Autoridad y sesiones
 
-Auth usa @supabase/ssr, cookies y Proxy para renovación. Las rutas protegidas y cada mutación validan el usuario en servidor con getUser. Las consultas se ejecutan con la sesión del usuario, nunca con una clave privilegiada. La autorización final se encuentra en RLS y RPCs.
+Auth usa @supabase/ssr, cookies y Proxy para renovación. Las rutas protegidas y cada mutación validan el usuario en servidor con getUser. Las consultas y operaciones financieras se ejecutan con la sesión del usuario. La clave administrativa opcional se limita al envío Auth Admin después de autorizar y registrar la invitación mediante la sesión del administrador. La autorización final se encuentra en RLS y RPCs.
 
 El propietario de instalación puede crear empresas. Cada empresa creada le concede una membresía admin explícita; no recibe lectura global de otras empresas. No se deriva ningún rol de user_metadata. El alta inicial requiere una sesión administrativa separada en Supabase.
 
@@ -26,13 +26,13 @@ Los arqueos capturan saldo teórico bajo el mismo bloqueo de fondo y no ajustan 
 
 Bucket privado con políticas por movimiento. Ruta generada por servidor: empresa/movimiento/UUID. La aplicación valida tamaño, MIME declarado y firma inicial, pero no realiza análisis antivirus ni interpretación completa de PDF. La reserva de metadatos y la carga a Storage son dos operaciones: si falla la carga, el movimiento permanece y el documento reservado puede no existir. Se informa el fallo; quedan pendientes estados explícitos de carga y limpieza supervisada de reservas huérfanas. No se permite reemplazar ni eliminar objetos desde la sesión normal.
 
-Cada acceso firmado se autoriza nuevamente y vence en 60 segundos. Mientras siga vigente, un enlace firmado funciona como credencial temporal; no registrarlo ni compartirlo. La revisión actual abre documentos en una pestaña; falta el visor integrado de dos paneles.
+Cada acceso firmado se autoriza nuevamente y vence en 60 segundos. Mientras siga vigente, un enlace firmado funciona como credencial temporal; no registrarlo ni compartirlo. La auditoría presenta un visor de imágenes/PDF junto al movimiento y su historial; los enlaces permiten abrir una copia temporal en otra pestaña.
 
 ## Límites explícitos
 
-El snapshot inicial devuelve todos los fondos autorizados y los últimos 100 movimientos/arqueos. No se presentan esas muestras como indicadores completos del período. Filtros, paginación y reportes agregados deben implementarse antes de escalar el uso.
+El snapshot inicial devuelve todos los fondos autorizados y los últimos 100 movimientos/arqueos. No se presentan esas muestras como indicadores completos del período. Los reportes calculan totales sobre todo el período autorizado y paginan el detalle de 200 en 200. Los filtros de operación afectan el detalle y no alteran el saldo completo.
 
-Faltan borradores, invitaciones por correo desde la aplicación, perfiles con nombres, gestión completa de categorías, cierres de auditoría, revisión de arqueos, alertas configurables, reportes CSV/PDF y PWA. No hay sincronización financiera offline.
+Borradores, invitaciones, cierres, revisión de arqueos, comentarios y reportes tienen implementación. Faltan perfiles con nombres, administración completa, conciliación histórica, alertas configurables y PWA. Toda la integración Auth/Storage/correo requiere validación real. No hay sincronización financiera offline.
 
 ## Fuentes técnicas consultadas
 
