@@ -6,7 +6,7 @@ No se ha creado un proyecto Supabase o Vercel desde esta sesión. Al publicar la
 
 ## Instalación existente verificada (2026-10-20)
 
-Se reutilizó Supabase `cuadria`, referencia `teoirtpwyqgxrcmzyqrj`, en `ca-central-1`. Las siete migraciones están aplicadas y registradas; no repetir el paquete inicial. RLS está habilitado en las 17 tablas públicas y en idempotencia privada. El bucket `receipts` es privado y el registro público está deshabilitado. `.env.local` contiene solo URL, clave publicable y origen local; no una clave administrativa. Las tres variables públicas de Preview están guardadas en Vercel `cuadria`. La primera cuenta fue creada por el usuario; completar bootstrap tras autorización y verificar login.
+Se reutilizó Supabase `cuadria`, referencia `teoirtpwyqgxrcmzyqrj`, en `ca-central-1`. Las siete migraciones están aplicadas y registradas; no repetir el paquete inicial. RLS está habilitado en las 17 tablas públicas y en idempotencia privada. El bucket `receipts` es privado y el registro público está deshabilitado. `.env.local` contiene solo URL, clave publicable y origen local; no una clave administrativa. Las tres variables públicas de Preview están guardadas en Vercel `cuadria`. La primera cuenta fue creada por el usuario y activada como propietaria tras su autorización expresa. El framework de Vercel se corrigió de Other a Next.js; la Preview ya muestra portada y login. Supabase Site URL y cuatro callbacks exactos están configurados para Preview y local. Queda validar la sesión y el circuito operativo.
 
 ## Supabase: guía para instalaciones nuevas
 
