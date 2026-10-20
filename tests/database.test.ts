@@ -84,6 +84,12 @@ beforeAll(async () => {
       "utf8",
     ),
   );
+  await db.exec(
+    readFileSync(
+      "supabase/migrations/202610200001_private_requests_rls.sql",
+      "utf8",
+    ),
+  );
   for (const id of [owner, employee, outsider, auditor])
     await db.query("insert into auth.users values($1)", [id]);
   await db.query("insert into public.installation_owners values($1)", [owner]);

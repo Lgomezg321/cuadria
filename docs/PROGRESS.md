@@ -1,6 +1,6 @@
 # Progreso de CUADRIA
 
-Actualizado: 2026-10-19, America/Bogota.
+Actualizado: 2026-10-20, America/Bogota.
 
 ## Estado real
 
@@ -8,13 +8,13 @@ Actualizado: 2026-10-19, America/Bogota.
 
 Repositorio único: `Lgomezg321/cuadria`. Se conservó main original `81928fb`; implementación en `codex/cuadria-foundation`. No se integró main ni se reemplazó su historia.
 
-No hay conexión Supabase autorizada disponible en esta sesión. La comprobación web también llegó a la pantalla de inicio de sesión. No se aplicaron migraciones a una base externa ni se enviaron invitaciones reales. GitHub confirmó compilaciones Vercel automáticas existentes para `cuadria`, `cuadria-caja`, `cuadria-app` y `cuadria-czyg`. No se creó otro proyecto. Falta verificar el proyecto canónico, variables y circuito autenticado en la URL pública.
+Supabase conectado y verificado en el proyecto existente `cuadria` (`teoirtpwyqgxrcmzyqrj`, Canada Central). GitHub muestra `Lgomezg321/cuadria` vinculado; despliegue automático de base desactivado. Se aplicaron en una transacción las seis migraciones iniciales y `202610200001_private_requests_rls`; el historial remoto confirmó siete versiones. Las 17 tablas públicas tienen RLS, igual que la tabla privada de idempotencia y el historial de migraciones. El bucket `receipts` es privado, admite JPG/PNG/PDF y limita a 10 MiB. No se cargaron datos financieros ni se enviaron invitaciones. El usuario creó su cuenta inicial; activación como propietario pendiente de confirmación. GitHub confirmó compilaciones Vercel automáticas existentes para `cuadria`, `cuadria-caja`, `cuadria-app` y `cuadria-czyg`. No se creó otro proyecto. Falta verificar el proyecto canónico, variables y circuito autenticado en la URL pública.
 
 ## Implementado
 
 - Next.js 16.4.2, React 19.3.0, TypeScript estricto/ES2022, Tailwind, Radix/Lucide y componente Button según shadcn/ui. Identidad CUADRIA y navegación responsive en español.
 - Auth SSR, cookies, renovación en Proxy, login/logout, recuperación/cambio de contraseña y callback PKCE o token hash. Páginas, descargas y acciones verifican la sesión.
-- Seis migraciones: empresas, membresías, fondos, asignaciones históricas, categorías, movimientos, asientos, comprobantes, revisiones, arqueos, borradores, cierres, invitaciones y comentarios.
+- Siete migraciones (incluido endurecimiento RLS de idempotencia): empresas, membresías, fondos, asignaciones históricas, categorías, movimientos, asientos, comprobantes, revisiones, arqueos, borradores, cierres, invitaciones y comentarios.
 - RLS, escrituras exclusivamente por RPC autorizadas, search_path fijo y bootstrap de propietario separado. El propietario no recibe lectura implícita de empresas sin membresía.
 - COP enteros exactos, JSON monetario en texto, bigint, operaciones atómicas, bloqueo de fondos, no sobregiros, idempotencia por actor/clave/contenido y reversión compensatoria.
 - Borradores propios con versión optimista: guardar no contabiliza; enviar utiliza el motor financiero y es idempotente.
@@ -44,7 +44,7 @@ PGlite ejecuta SQL PostgreSQL real con sustitutos mínimos de Auth/Storage. No d
 
 ## Límites y pendientes
 
-- Conectar Supabase de desarrollo, aplicar las seis migraciones y probar Auth, correo, RPCs, Storage privado y aislamiento mediante llamadas HTTP reales.
+- Completar la activación del propietario y el circuito autenticado real: correo, RPCs, carga/descarga privada e aislamiento entre cuentas. La conexión HTTP ya verificó Auth disponible, registro público deshabilitado, confirmación de correo exigida, lectura anónima de empresas rechazada (401/42501) y lista de buckets vacía para anónimos.
 - Circuito autenticado de aceptación de 20 pasos, pruebas de recuperación/restauración y piloto supervisado.
 - Perfiles y nombres legibles, directorio en formularios, retirada de membresías, edición completa de categorías y administración ampliada.
 - Conciliación bancaria histórica, partidas pendientes y evidencias del arqueo; hoy se registra una declaración al momento actual.
@@ -63,6 +63,10 @@ Se corrigió el lockfile inicial generado con npm 11.6: faltaban dependencias op
 
 ## Siguiente paso y continuidad
 
-Habilitar una conexión autorizada a Supabase y seleccionar/crear **cuadria-dev**. Seguir DEPLOYMENT, aplicar migraciones, verificar propietario y realizar el circuito administrador → empleado → borrador → egreso → comprobante → observación/respuesta → aprobación → arqueo → cierre → reporte. Después verificar la preview del proyecto Vercel canónico `cuadria`. Nunca solicitar secretos por chat.
+Continuar en el proyecto Supabase existente `cuadria`; no reinstalar las migraciones. `.env.local` está configurado e ignorado por Git. Las tres variables públicas están guardadas en Preview del proyecto Vercel canónico. Verificar propietario y realizar el circuito administrador → empleado → borrador → egreso → comprobante → observación/respuesta → aprobación → arqueo → cierre → reporte. Después verificar la preview del proyecto Vercel canónico `cuadria`. Nunca solicitar secretos por chat.
 
 Al retomar: leer AGENTS y este archivo, revisar Git y el último CI; continuar la implementación existente. No declarar el MVP terminado por una compilación exitosa ni por pruebas con sustitutos de Auth/Storage.
+
+## Verificación de instalación — 2026-10-20
+
+El SQL Editor remoto confirmó 17 tablas públicas, cero sin RLS, siete migraciones y bucket privado de 10485760 bytes. El alta del primer usuario fue realizada personalmente por el usuario. Las credenciales privadas no se copiaron al repositorio. Tras añadir la migración de protección privada pasaron lint, tipos y las 70 pruebas. La compilación local Turbopack encontró una restricción del entorno al abrir un puerto para CSS; `npm run build -- --webpack` compiló correctamente con `.env.local`. La validación Turbopack y concurrencia debe confirmarse nuevamente en CI para el nuevo commit.

@@ -2,9 +2,13 @@
 
 ## Estado real
 
-No se ha creado un proyecto Supabase o Vercel desde esta sesión. Al publicar la rama, GitHub reportó despliegues automáticos de cuatro proyectos Vercel existentes: cuadria, cuadria-caja, cuadria-app y cuadria-czyg. Falta acceso administrativo y verificación de la URL pública; reutilizar el proyecto canónico cuadria antes de considerar otro. La opción preferida es habilitar las integraciones y continuar desde Codex; no enviar secretos por chat.
+No se ha creado un proyecto Supabase o Vercel desde esta sesión. Al publicar la rama, GitHub reportó despliegues automáticos de cuatro proyectos Vercel existentes: cuadria, cuadria-caja, cuadria-app y cuadria-czyg. Se verificó acceso administrativo a Supabase y Vercel; falta completar la prueba autenticada de la Preview; reutilizar el proyecto canónico cuadria antes de considerar otro. La opción preferida es habilitar las integraciones y continuar desde Codex; no enviar secretos por chat.
 
-## Supabase: intervención mínima
+## Instalación existente verificada (2026-10-20)
+
+Se reutilizó Supabase `cuadria`, referencia `teoirtpwyqgxrcmzyqrj`, en `ca-central-1`. Las siete migraciones están aplicadas y registradas; no repetir el paquete inicial. RLS está habilitado en las 17 tablas públicas y en idempotencia privada. El bucket `receipts` es privado y el registro público está deshabilitado. `.env.local` contiene solo URL, clave publicable y origen local; no una clave administrativa. Las tres variables públicas de Preview están guardadas en Vercel `cuadria`. La primera cuenta fue creada por el usuario; completar bootstrap tras autorización y verificar login.
+
+## Supabase: guía para instalaciones nuevas
 
 1. Ingresar en https://supabase.com/dashboard y seleccionar la organización propia.
 2. Crear un proyecto llamado **cuadria-dev** para validación. Elegir **East US (North Virginia), us-east-1**, como punto de partida para mantener base y funciones Vercel en la misma región. Medir latencia desde Colombia durante el piloto; no se está afirmando que sea la región más rápida. Si existe una obligación de residencia de datos, resolverla antes de crear producción.
@@ -45,7 +49,7 @@ Las invitaciones de empresa vencen a los 7 días; el token de Auth tiene su prop
 7. Agregar el callback exacto en Supabase y volver a desplegar después de cambiar variables públicas: Next.js las incorpora durante la compilación.
 8. Verificar la URL desplegada, inicio/cierre de sesión, RPCs, lectura aislada y documentos privados. Revisar errores sin imprimir tokens o contraseñas.
 
-Vercel admite importar repositorios y generar previews por rama según su [documentación de Git](https://vercel.com/docs/git). El código incluye `vercel.json` con región iad1; no hay un despliegue confirmado todavía.
+Vercel admite importar repositorios y generar previews por rama según su [documentación de Git](https://vercel.com/docs/git). El código incluye `vercel.json` con región iad1; el despliegue de la aplicación con Supabase debe verificarse en Preview antes de promoverlo a producción.
 
 ## Integración de la rama
 
