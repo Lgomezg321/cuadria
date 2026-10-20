@@ -78,3 +78,27 @@ La Preview conserva Vercel Authentication: las peticiones HTTP externas sin sesi
 ## Acceso autenticado — 2026-10-20
 
 El usuario informó un fallo de login. Los registros Auth mostraron tres rechazos `400: Invalid login credentials`; posteriormente Supabase registró un inicio exitoso y se verificó la sesión real en `/panel` y `/empresas`, incluyendo recarga. El panel muestra cero empresas y fondos, y el propietario dispone de Crear empresa. No se modificaron contraseñas ni se crearon datos financieros. Se autorizó un correo de recuperación, pero la solicitud no llegó a registrarse (`recovery_sent_at` nulo); al comprobar la sesión válida no se repitió el envío. Siguiente paso: obtener nombre y NIT de la empresa para configurar la operación.
+
+## Invitaciones — diagnóstico 2026-10-20
+
+El usuario creó una empresa y encontró el aviso de configuración al invitar. Se verificó que Preview de Vercel solo tiene las tres variables públicas: falta `SUPABASE_SERVICE_ROLE_KEY`. `inviteEmployee` retorna antes de `create_invitation` y del envío cuando falta esa variable. SMTP personalizado está deshabilitado; Supabase muestra las plantillas predeterminadas y exige configurar SMTP antes de editar invitaciones. Según la documentación oficial https://supabase.com/docs/guides/auth/auth-smtp, el correo predeterminado solo entrega a miembros del equipo del proyecto.
+
+El usuario autorizó expresamente copiar la clave administrativa existente de Supabase al proyecto Vercel canónico, exclusivamente para `codex/cuadria-foundation`. Se guardó `SUPABASE_SERVICE_ROLE_KEY` como Secret de esa rama Preview; se verificaron en memoria el rol `service_role` y el proyecto de destino. El valor no se escribió en archivos, Git ni salidas; se limpió el portapapeles usado para la transferencia. Vercel confirmó el guardado. Se inició el redespliegue `7TCzn1HRfgWzEfYUGgSnJbykc7XA` del commit `86b03b2` en Preview para aplicar la configuración.
+
+Vercel confirmó el redespliegue en estado Ready (42 segundos), conservando el alias Preview de la rama. No equivale a una prueba de entrega de invitación.
+
+El usuario aclaró que todavía no tiene dominio propio y eligió Gmail temporal para pruebas. Se preparó, sin guardar, SMTP de Supabase con `smtp.gmail.com`, puerto 465, nombre CUADRIA y el correo del propietario como remitente/usuario. Password permanece vacío. Google solicita verificación de identidad para acceder a Contraseñas de aplicaciones; se dejó esa pestaña al usuario para crear personalmente la credencial y pegarla directamente en Supabase. Supabase advierte que Gmail es correo personal y puede afectar la entrega transaccional; es una solución temporal. No se envió ninguna invitación. Después de SMTP, adaptar Invite user y recuperación al callback `token_hash` ya documentado, verificar la entrega y definir una URL accesible a empleados: la Preview actual conserva Vercel Authentication. No cambiar esa protección sin autorización.
+
+### SMTP guardado y plantillas — 2026-10-20
+
+Después de que el usuario pegara personalmente su contraseña de aplicación y guardara, Supabase confirmó SMTP activo y contraseña almacenada oculta. Las plantillas ya permiten edición. Se guardaron Invite user y Reset password en español, con `{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}` y tipos `invite`/`recovery`, respectivamente, además de `next=/auth/password`. La vista previa de ambas confirmó el contenido y enlace correctos; el callback existente admite esos tipos. No se leyó la contraseña SMTP.
+
+Se preparó recuperación desde el login de la Preview al correo del propietario como prueba de entrega; el usuario rechazó el envío y prefirió probar personalmente la invitación. No enviar ese correo de prueba. Sigue pendiente verificar entrega real, aceptación por un invitado y acceso externo a la Preview protegida. No se cambiaron permisos de empresa ni se desactivó Vercel Authentication.
+
+### Pestaña anterior al despliegue — 2026-10-20
+
+Al intentar invitar, el usuario obtuvo la pantalla genérica de error. Los logs de Vercel mostraron dos POST `/empresas` rechazados con HTTP 409 a las 14:12:15 y 14:12:42 de Bogotá: `Failed to find Server Action`, identificador de acción de un despliegue anterior. El fallo ocurre antes de ejecutar la acción; no demuestra un fallo SMTP. Se recargó completamente la pestaña y volvió el formulario, con sesión autenticada y empresa visible. El agente no repitió el envío. El usuario indicó que ya quedó listo; todavía no hay evidencia explícita de recepción del correo ni de aceptación por el destinatario. No se modificó código ni se generó otro despliegue.
+
+## Entrega para auditoría independiente — 2026-10-20
+
+Se creó `docs/AUDIT_HANDOFF.md`, con objetivo de código `53555289b92090de0867d9d60f15d5db5f983037`, arquitectura, matriz de implementación/evidencia, reglas financieras, seguridad, configuración remota observada, instrucciones reproducibles y pendientes. El estado exitoso del workflow Quality `39417194748` y todos los pasos de su job `118608975500` se reconfirmaron con GitHub. Los cambios posteriores al objetivo son documentales. La guía no constituye una auditoría ni un certificado de operación; no repite las pruebas completas por un cambio de documentación. Se revisan formato, enlaces locales y posibles secretos antes de publicar en la rama de trabajo autorizada.
