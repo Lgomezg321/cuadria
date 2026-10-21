@@ -6,7 +6,8 @@ export const moneySchema = z
     "Usa pesos enteros, sin puntos ni comas (máximo 18 dígitos).",
   );
 export const positiveMoneySchema = moneySchema.refine(
-  (v) => BigInt(v) > 0n,
+  // zod keeps running refinements after the regex fails: never BigInt("1.000").
+  (v) => !/^(0|[1-9][0-9]{0,17})$/.test(v) || BigInt(v) > 0n,
   "El valor debe ser mayor que cero.",
 );
 export function formatCOP(value: string | bigint): string {

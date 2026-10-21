@@ -1,13 +1,34 @@
 "use server";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { supabaseConfig, appOrigin } from "@/lib/env";
-import { requireUser } from "@/lib/auth";
-import { publicError } from "@/lib/errors";
+import { createClient, createEphemeralClient } from "@/lib/supabase/server";
+import { supabaseConfig, appOrigin, turnstileSiteKey } from "@/lib/env";
+import { inRecoveryMode, isTransientAuthError, requireUser } from "@/lib/auth";
+import {
+  AUTH_UNAVAILABLE_MESSAGE,
+  CAPTCHA_FAILED_MESSAGE,
+  CAPTCHA_REQUIRED_MESSAGE,
+  passwordUpdateError,
+  publicError,
+  RATE_LIMIT_MESSAGE,
+} from "@/lib/errors";
+import { describeError, logServer } from "@/lib/log";
+import { validationState } from "@/lib/validation";
+import {
+  loginSchema,
+  passwordChangeSchema,
+  RECOVERY_REQUEST_MESSAGE,
+  recoverySchema,
+} from "@/lib/auth-schemas";
+import { AUTH_COOKIE_PATH, RECOVERY_COOKIE } from "@/lib/auth-flow";
 import { moneySchema, positiveMoneySchema } from "@/lib/domain/money";
-export type ActionState = { error?: string; success?: string };
+export type ActionState = {
+  error?: string;
+  success?: string;
+  fieldErrors?: Record<string, string>;
+};
 const uuid = z.uuid();
 const schemas = {
   company: z.object({
@@ -255,17 +276,29 @@ export async function mutate(
         return { error: "Operación desconocida." };
     }
   } catch (error) {
-    return {
-      error:
-        error instanceof z.ZodError
-          ? error.issues[0].message
-          : "Revisa los datos del formulario.",
-    };
+    if (error instanceof z.ZodError) return validationState(error);
+    logServer("warn", "action.validation_failed", describeError(error));
+    return { error: "Revisa los datos del formulario." };
   }
   const { error } = await supabase.rpc(name, args);
   if (error) return { error: publicError(error) };
   revalidatePath("/", "layout");
   return { success: "Operación guardada correctamente." };
+}
+/** Reads the optional Turnstile token; null means "required but missing". */
+function captchaFrom(form: FormData): { captchaToken?: string } | null {
+  if (!turnstileSiteKey()) return {};
+  const token = form.get("captchaToken");
+  return typeof token === "string" && token.length > 0 && token.length < 4096
+    ? { captchaToken: token }
+    : null;
+}
+async function acceptPendingInvitations(
+  client: Awaited<ReturnType<typeof createClient>>,
+) {
+  const { error } = await client.rpc("accept_invitations");
+  if (error)
+    logServer("warn", "auth.accept_invitations_failed", describeError(error));
 }
 export async function login(
   _previous: ActionState,
@@ -273,24 +306,41 @@ export async function login(
 ): Promise<ActionState> {
   if (!supabaseConfig())
     return { error: "Primero conecta el proyecto Supabase." };
-  const parsed = z
-    .object({ email: z.email(), password: z.string().min(1).max(200) })
-    .safeParse(Object.fromEntries(form));
-  if (!parsed.success) return { error: "Ingresa tu correo y contraseña." };
+  const parsed = loginSchema.safeParse(Object.fromEntries(form));
+  if (!parsed.success) return validationState(parsed.error);
+  const captcha = captchaFrom(form);
+  if (!captcha) return { error: CAPTCHA_REQUIRED_MESSAGE };
   const client = await createClient();
-  const { error } = await client.auth.signInWithPassword(parsed.data);
-  if (error)
+  const { error } = await client.auth.signInWithPassword({
+    ...parsed.data,
+    options: captcha,
+  });
+  if (error) {
+    if (error.code === "captcha_failed")
+      return { error: CAPTCHA_FAILED_MESSAGE };
+    if (error.status === 429 || error.code === "over_request_rate_limit")
+      return { error: RATE_LIMIT_MESSAGE };
+    if (isTransientAuthError(error)) {
+      logServer("error", "auth.login_unavailable", describeError(error));
+      return { error: AUTH_UNAVAILABLE_MESSAGE };
+    }
+    if (error.code !== "invalid_credentials")
+      logServer("warn", "auth.login_failed", describeError(error));
     return {
       error:
         "No fue posible iniciar sesión. Comprueba tus credenciales e inténtalo de nuevo.",
     };
-  await client.rpc("accept_invitations");
+  }
+  await acceptPendingInvitations(client);
   redirect("/panel");
 }
 export async function logout() {
   const client = await createClient();
   const { error } = await client.auth.signOut();
-  if (error) throw new Error("No fue posible cerrar la sesión.");
+  if (error) {
+    logServer("error", "auth.logout_failed", describeError(error));
+    throw new Error("No fue posible cerrar la sesión.");
+  }
   redirect("/login");
 }
 export async function recoverPassword(
@@ -299,30 +349,98 @@ export async function recoverPassword(
 ): Promise<ActionState> {
   if (!supabaseConfig())
     return { error: "Primero conecta el proyecto Supabase." };
-  const email = z.email().safeParse(form.get("email"));
-  if (!email.success) return { error: "Ingresa un correo válido." };
+  const email = recoverySchema.safeParse(Object.fromEntries(form));
+  if (!email.success) return validationState(email.error);
+  const captcha = captchaFrom(form);
+  if (!captcha) return { error: CAPTCHA_REQUIRED_MESSAGE };
   const client = await createClient();
-  const { error } = await client.auth.resetPasswordForEmail(email.data, {
+  const { error } = await client.auth.resetPasswordForEmail(email.data.email, {
     redirectTo: `${appOrigin()}/auth/callback?next=/auth/password`,
+    ...captcha,
   });
-  if (error)
-    return {
-      error: "No fue posible solicitar la recuperación. Inténtalo más tarde.",
-    };
-  return {
-    success:
-      "Si el correo está registrado, recibirás instrucciones para recuperar tu acceso.",
-  };
+  if (error) {
+    // CAPTCHA failures do not depend on the account, so they can be shown.
+    if (error.code === "captcha_failed")
+      return { error: CAPTCHA_FAILED_MESSAGE };
+    // Anything else (unknown e-mail, rate limit, SMTP) gets the same answer
+    // to avoid account enumeration; the cause is only logged.
+    logServer("warn", "auth.recovery_failed", describeError(error));
+  }
+  return { success: RECOVERY_REQUEST_MESSAGE };
 }
 export async function changePassword(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
-  const { supabase } = await requireUser();
-  const password = z.string().min(12).max(128).safeParse(form.get("password"));
-  if (!password.success)
-    return { error: "Utiliza una contraseña de al menos 12 caracteres." };
-  const { error } = await supabase.auth.updateUser({ password: password.data });
-  if (error) return { error: "No fue posible actualizar tu contraseña." };
+  const { supabase, user } = await requireUser();
+  const recovery = await inRecoveryMode(supabase);
+  const parsed = passwordChangeSchema(recovery).safeParse(
+    Object.fromEntries(form),
+  );
+  if (!parsed.success) return validationState(parsed.error);
+  const { password, currentPassword } = parsed.data;
+  if (recovery) {
+    // Session opened minutes ago from a verified e-mail link.
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      logServer("warn", "auth.password_update_failed", describeError(error));
+      return { error: passwordUpdateError(error) };
+    }
+  } else {
+    if (!user.email || !currentPassword)
+      return { error: "No fue posible verificar tu identidad." };
+    const captcha = captchaFrom(form);
+    if (!captcha) return { error: CAPTCHA_REQUIRED_MESSAGE };
+    // Verify the current password on an isolated client and update with
+    // that fresh session, which also satisfies Supabase "secure password
+    // change" without depending on e-mail delivery of a nonce.
+    const verifier = createEphemeralClient();
+    try {
+      const { data, error } = await verifier.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+        options: captcha,
+      });
+      if (error || data.user?.id !== user.id) {
+        if (error?.code === "captcha_failed")
+          return { error: CAPTCHA_FAILED_MESSAGE };
+        if (error?.status === 429) return { error: RATE_LIMIT_MESSAGE };
+        if (error && isTransientAuthError(error)) {
+          logServer("error", "auth.reauth_unavailable", describeError(error));
+          return { error: AUTH_UNAVAILABLE_MESSAGE };
+        }
+        if (error?.code !== "invalid_credentials")
+          logServer("warn", "auth.reauth_failed", describeError(error));
+        const message = "La contraseña actual no es correcta.";
+        return { error: message, fieldErrors: { currentPassword: message } };
+      }
+      const { error: updateError } = await verifier.auth.updateUser({
+        password,
+      });
+      if (updateError) {
+        logServer(
+          "warn",
+          "auth.password_update_failed",
+          describeError(updateError),
+        );
+        return { error: passwordUpdateError(updateError) };
+      }
+    } finally {
+      const { error } = await verifier.auth.signOut({ scope: "local" });
+      if (error)
+        logServer("warn", "auth.reauth_signout_failed", describeError(error));
+    }
+  }
+  // Close every other session (stolen or forgotten devices included).
+  const { error: othersError } = await supabase.auth.signOut({
+    scope: "others",
+  });
+  if (othersError)
+    logServer(
+      "error",
+      "auth.signout_others_failed",
+      describeError(othersError),
+    );
+  (await cookies()).delete({ name: RECOVERY_COOKIE, path: AUTH_COOKIE_PATH });
   redirect("/panel");
 }
