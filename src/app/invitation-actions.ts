@@ -29,7 +29,8 @@ export async function inviteEmployee(
     return { error: "Revisa la empresa, el correo y el rol." };
   const v = parsed.data;
   // Authorize and persist the intended role with the caller's session before using the admin API.
-  const { error } = await supabase.rpc("create_invitation", {
+  // The RPC also enforces per-email, per-actor and per-company rate limits.
+  const { data: invitation, error } = await supabase.rpc("create_invitation", {
     p_company: v.company,
     p_email: v.email,
     p_role: v.role,
@@ -43,11 +44,18 @@ export async function inviteEmployee(
     { redirectTo: `${appOrigin()}/auth/callback?next=/auth/password` },
   );
   revalidatePath("/empresas");
-  if (sendError)
+  if (sendError) {
+    // Server-side record of the failed delivery, without personal data.
+    console.error("invitation_delivery_failed", {
+      invitation: typeof invitation === "string" ? invitation : null,
+      status: sendError.status ?? null,
+      code: sendError.code ?? null,
+    });
     return {
       error:
         "La invitación quedó registrada, pero el correo no se pudo enviar. Si la persona ya tiene cuenta, puede iniciar sesión y aceptar sus invitaciones. Comprueba el servicio de correo antes de reintentar.",
     };
+  }
   return {
     success:
       "Invitación enviada. La membresía se activa al verificar el correo e iniciar sesión.",

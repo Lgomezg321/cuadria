@@ -56,6 +56,11 @@ const schemas = {
     user: uuid,
     role: z.enum(["employee", "admin", "auditor"]),
   }),
+  memberStatus: z.object({
+    company: uuid,
+    user: uuid,
+    active: z.enum(["true", "false"]),
+  }),
 };
 export async function mutate(
   _previous: ActionState,
@@ -224,6 +229,16 @@ export async function mutate(
         const v = schemas.member.parse(raw);
         name = "assign_member";
         args = { p_company: v.company, p_user: v.user, p_role: v.role };
+        break;
+      }
+      case "memberStatus": {
+        const v = schemas.memberStatus.parse(raw);
+        name = "set_member_active";
+        args = {
+          p_company: v.company,
+          p_user: v.user,
+          p_active: v.active === "true",
+        };
         break;
       }
       default:
