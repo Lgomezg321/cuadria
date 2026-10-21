@@ -1,6 +1,47 @@
 # Progreso de CUADRIA
 
-Actualizado: 2026-10-20, America/Bogota.
+Actualizado: 2026-10-21, America/Bogota.
+
+## Fase 2 de remediación de la auditoría — 2026-10-21
+
+Rama local `fix/phase2` sobre el merge `623a458` (integra `fix/security`, `fix/receipts`, `fix/finance`, `fix/ci-ops` y `fix/app-auth`). Sin push, sin PR y sin conexiones a Supabase, Vercel, GitHub ni correo. Estado por hallazgo en [AUDIT_REPORT.md §9](AUDIT_REPORT.md#9-estado-de-remediación-21-10-2026).
+
+### Cambios
+
+- **Pruebas de base de datos:** arranque PGlite compartido (`tests/helpers/db.ts`) que carga **todas** las migraciones en orden sobre sustitutos de Supabase (roles con sus privilegios por defecto, `auth.uid()/role()/jwt()`, Storage con `owner_id`/`metadata`, pgcrypto en `extensions` y un sustituto de Vault). `database`, `security`, `finance-integrity`, `receipts-db` y la nueva `legacy-reversals` lo usan; los datos heredados se siembran justo antes de la migración que los transforma.
+- **Migración `202610210004_integration_fixes.sql`:** `alerts_snapshot` con columnas explícitas que cuenta las reversiones pendientes (`pending` las incluye; `pending_reversals` las detalla) y solo comprobantes verificados (R-02); exención auditada de las reversiones anteriores a `202610210002` que seguían pendientes, para que no bloqueen cierres; `confirm_receipt` con veredicto firmado por HMAC y secreto en Vault (R-01).
+- **Aplicación:** filtros de reporte inválidos con mensaje en línea en `/reportes` y 400 en español en CSV/PDF, autenticando antes de leerlos (H-35); `logServer` en invitaciones; firma del veredicto de comprobantes con `RECEIPT_VERIFICATION_SECRET` (falla cerrado sin ella); segundo widget Turnstile (R-03); códigos de error comparados completos (R-04); ventana de recuperación vencida con aviso y enlace (R-05); textos del panel "sin comprobante verificado".
+- **Pruebas de la capa de aplicación (H-03):** `tests/app-actions.test.ts` y `tests/app-routes.test.ts` con cliente Supabase simulado: sesión antes de cualquier trabajo, importes como texto y formatos rechazados, claves de idempotencia, reserva/confirmación de comprobantes, cliente administrativo solo tras `create_invitation`, reportes y `/comprobantes/[id]`.
+- **Documentación:** DATABASE (11 migraciones, tablas, RPC con firmas, reglas), ARCHITECTURE (comprobantes, callback POST, CSP/nonce, cookies), OPERATIONS §11 y §13 (secreto de Vault y Vercel), SECURITY (RSK-2026-01, `service_role`), README y retirada de la referencia del proyecto y de las URLs de la Preview de este archivo (H-43).
+
+### Evidencia (ejecutada en el contenedor, Node 24.22.0, npm 11.19.1)
+
+| Comando                                                                                                    | Resultado                                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm ci`                                                                                                   | Correcto                                                                                                                                                                           |
+| `npm run lint`                                                                                             | Sin errores ni avisos                                                                                                                                                              |
+| `npm run typecheck`                                                                                        | Correcto                                                                                                                                                                           |
+| `npm test`                                                                                                 | **284/284** en 16 archivos (antes de la fase: 175 en 12)                                                                                                                           |
+| `npm run format:check` y `git diff --check`                                                                | Limpios                                                                                                                                                                            |
+| `NEXT_PUBLIC_SUPABASE_URL='' NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY='' npm run build`                        | Correcto; `.next/static` no contiene `SUPABASE_SERVICE_ROLE_KEY`, `RECEIPT_VERIFICATION_SECRET` ni `createHmac`                                                                    |
+| `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium npm run test:e2e`                                | **12/12** (desktop y móvil, sin Supabase). Chromium del sistema, no la revisión 1248 que fija Playwright: orientativo                                                              |
+| `npm run test:concurrency` contra PostgreSQL 16.15 desechable (sin Docker, `unshare --user`, puerto local) | **9/9** escenarios con espera de bloqueo observada, aplicando las 11 migraciones; base eliminada después. CI usa PostgreSQL 17.10                                                  |
+| Comprobación SQL en esa base                                                                               | `alerts_snapshot` como `authenticated` con grants por columnas; `request_payload` sigue denegado; HMAC de Node verificado por `receipt_verdict_valid` con pgcrypto en `extensions` |
+| `npm audit --omit=dev`                                                                                     | 0 vulnerabilidades                                                                                                                                                                 |
+
+### Limitaciones
+
+- **Nada se verificó contra Supabase, Vercel ni correo reales.** Las migraciones `202610210001` a `202610210004` **no están aplicadas** en el proyecto remoto, que sigue con las siete iniciales.
+- PGlite y PostgreSQL 16 local no sustituyen GoTrue, PostgREST ni Storage reales: la subida directa con URL firmada, los metadatos que escribe Storage, la lectura de Vault por el propietario de las funciones y los límites de Vercel siguen sin probar.
+- Las pruebas de la capa de aplicación usan un cliente simulado; los E2E solo cubren el modo sin configuración. No hay circuito autenticado automatizado.
+- Antes de desplegar este código hay que crear el secreto de comprobantes en Vault y en Vercel (OPERATIONS §13); sin él los comprobantes nuevos quedan pendientes.
+
+### Siguiente tarea
+
+1. Crear el proyecto de desarrollo y aplicar las migraciones en orden (OPERATIONS §1 y §11), con el secreto de comprobantes en Vault y Vercel (§13).
+2. Ejecutar el circuito de [ACCEPTANCE.md](ACCEPTANCE.md) con usuarios sintéticos, incluida la subida de comprobantes de 4,4, 5 y 9,9 MB y la revisión de una reversión por un segundo administrador.
+3. Ejecutar los runbooks pendientes de [OPERATIONS.md](OPERATIONS.md) (entornos, rotación de la clave, `main` protegida, Skew Protection, SMTP, Auth, restauración) y dejar el acta.
+4. Abrir el PR hacia `main` y esperar el workflow Quality en verde.
 
 ## Estado real
 
@@ -8,7 +49,7 @@ Actualizado: 2026-10-20, America/Bogota.
 
 Repositorio único: `Lgomezg321/cuadria`. Se conservó main original `81928fb`; implementación en `codex/cuadria-foundation`. No se integró main ni se reemplazó su historia.
 
-Supabase conectado y verificado en el proyecto existente `cuadria` (`teoirtpwyqgxrcmzyqrj`, Canada Central). GitHub muestra `Lgomezg321/cuadria` vinculado; despliegue automático de base desactivado. Se aplicaron en una transacción las seis migraciones iniciales y `202610200001_private_requests_rls`; el historial remoto confirmó siete versiones. Las 17 tablas públicas tienen RLS, igual que la tabla privada de idempotencia y el historial de migraciones. El bucket `receipts` es privado, admite JPG/PNG/PDF y limita a 10 MiB. No se cargaron datos financieros ni se enviaron invitaciones. El usuario creó su cuenta inicial y autorizó expresamente su activación como propietario; la inserción se ejecutó y verificó en SQL Editor. No se crearon empresas ni datos financieros. GitHub confirmó compilaciones Vercel automáticas existentes para `cuadria`, `cuadria-caja`, `cuadria-app` y `cuadria-czyg`. No se creó otro proyecto. Proyecto canónico `cuadria` y variables Preview verificados. La configuración heredada «Other» causaba 404 aun con estado Ready; se corrigió a Next.js y se redesplegó. Portada, login, panel y Empresas de Preview verificados con la sesión real del propietario. La sesión persiste al recargar; circuito financiero completo pendiente.
+Supabase conectado y verificado en el proyecto existente (región de Canadá; la referencia del proyecto se retiró del repositorio, H-43). GitHub muestra `Lgomezg321/cuadria` vinculado; despliegue automático de base desactivado. Se aplicaron en una transacción las seis migraciones iniciales y `202610200001_private_requests_rls`; el historial remoto confirmó siete versiones. Las 17 tablas públicas tienen RLS, igual que la tabla privada de idempotencia y el historial de migraciones. El bucket `receipts` es privado, admite JPG/PNG/PDF y limita a 10 MiB. No se cargaron datos financieros ni se enviaron invitaciones. El usuario creó su cuenta inicial y autorizó expresamente su activación como propietario; la inserción se ejecutó y verificó en SQL Editor. No se crearon empresas ni datos financieros. GitHub confirmó compilaciones Vercel automáticas existentes para `cuadria`, `cuadria-caja`, `cuadria-app` y `cuadria-czyg`. No se creó otro proyecto. Proyecto canónico `cuadria` y variables Preview verificados. La configuración heredada «Other» causaba 404 aun con estado Ready; se corrigió a Next.js y se redesplegó. Portada, login, panel y Empresas de Preview verificados con la sesión real del propietario. La sesión persiste al recargar; circuito financiero completo pendiente.
 
 ## Implementado
 
@@ -36,7 +77,7 @@ La ampliación pasó localmente `npm run typecheck`, `npm run lint`, `npm test` 
 
 El commit final de código `ea788abb2407b9d36dfb8cd5a2eb29a0ef6ef4e7` pasó [Quality 39338265070](https://github.com/Lgomezg321/cuadria/actions/runs/39338265070): **70 pruebas SQL/unitarias, 4 escenarios de concurrencia en PostgreSQL 17.11 y 6 E2E de escritorio/móvil**, además de instalación limpia, lint, tipos, build y auditoría de producción con cero vulnerabilidades. Los cuatro casos concurrentes cubren sobregiro, ocho reintentos idempotentes, transferencias opuestas y cierre contra contabilización tardía; las pruebas de bloqueo comprueban espera real entre conexiones.
 
-GitHub reportó éxito de Vercel en los cuatro proyectos existentes para ese mismo commit. El [despliegue del proyecto canónico cuadria](https://vercel.com/lucas-gomezs-projects-7ea98b84/cuadria/9ZSG7iDPjkhWqBNmGx9urJrcgC1j) requiere iniciar sesión para inspeccionarlo. Esto confirma el estado reportado por la integración, pero no verifica una URL pública ni el circuito Auth/Storage. La actualización posterior de documentación no modifica código y referencia expresamente este commit probado.
+GitHub reportó éxito de Vercel en los cuatro proyectos existentes para ese mismo commit. El despliegue del proyecto canónico (enlace del panel de Vercel retirado del repositorio, H-43) requiere iniciar sesión para inspeccionarlo. Esto confirma el estado reportado por la integración, pero no verifica una URL pública ni el circuito Auth/Storage. La actualización posterior de documentación no modifica código y referencia expresamente este commit probado.
 
 Restricciones locales: Chromium CLI no inicia por permisos macOS MachPortRendezvous; PostgreSQL nativo desechable no inicializa por shmget. Esos casos se ejecutan en CI, sin eludir el aislamiento local. La inspección del navegador integrado verificó inicio y configuración en móvil/escritorio; no equivale a una sesión Supabase autenticada.
 
@@ -71,7 +112,7 @@ Al retomar: leer AGENTS y este archivo, revisar Git y el último CI; continuar l
 
 El SQL Editor remoto confirmó 17 tablas públicas, cero sin RLS, siete migraciones y bucket privado de 10485760 bytes. El alta del primer usuario fue realizada personalmente por el usuario. Las credenciales privadas no se copiaron al repositorio. Tras añadir la migración de protección privada pasaron lint, tipos y las 70 pruebas. La compilación local Turbopack encontró una restricción del entorno al abrir un puerto para CSS; `npm run build -- --webpack` compiló correctamente con `.env.local`. El commit `53555289b92090de0867d9d60f15d5db5f983037` pasó nuevamente [Quality 39417194748](https://github.com/Lgomezg321/cuadria/actions/runs/39417194748): lint, tipos, 70 pruebas, concurrencia, build Turbopack, E2E y auditoría de producción.
 
-Preview corregida: [CUADRIA](https://cuadria-git-codex-cuadria-4b0283-lucas-gomezs-projects-7ea98b84.vercel.app), [despliegue KheSJGx5r](https://vercel.com/lucas-gomezs-projects-7ea98b84/cuadria/KheSJGx5rAVt271iWwysE9brDPX6), commit `5355528`. Site URL de Supabase apunta a ese origen y hay cuatro callbacks exactos: Preview/local, con y sin `next=/auth/password`; sin comodines. Se pidió al usuario iniciar sesión personalmente en la Preview para validar la cuenta. Las rutas locales protegidas `/panel`, `/reportes/csv` y `/reportes/pdf` redirigen a login sin sesión. No se promovió a producción: `main` conserva el commit inicial.
+Preview corregida del proyecto canónico (URL y despliegue disponibles en el panel de Vercel; no se publican aquí, H-43), commit `5355528`. Site URL de Supabase apunta a ese origen y hay cuatro callbacks exactos: Preview/local, con y sin `next=/auth/password`; sin comodines. Se pidió al usuario iniciar sesión personalmente en la Preview para validar la cuenta. Las rutas locales protegidas `/panel`, `/reportes/csv` y `/reportes/pdf` redirigen a login sin sesión. No se promovió a producción: `main` conserva el commit inicial.
 
 La Preview conserva Vercel Authentication: las peticiones HTTP externas sin sesión Vercel redirigen a SSO (302). La portada y el login se verificaron en Chrome con la sesión Vercel del propietario. No se desactivó esa protección.
 
@@ -83,7 +124,7 @@ El usuario informó un fallo de login. Los registros Auth mostraron tres rechazo
 
 El usuario creó una empresa y encontró el aviso de configuración al invitar. Se verificó que Preview de Vercel solo tiene las tres variables públicas: falta `SUPABASE_SERVICE_ROLE_KEY`. `inviteEmployee` retorna antes de `create_invitation` y del envío cuando falta esa variable. SMTP personalizado está deshabilitado; Supabase muestra las plantillas predeterminadas y exige configurar SMTP antes de editar invitaciones. Según la documentación oficial https://supabase.com/docs/guides/auth/auth-smtp, el correo predeterminado solo entrega a miembros del equipo del proyecto.
 
-El usuario autorizó expresamente copiar la clave administrativa existente de Supabase al proyecto Vercel canónico, exclusivamente para `codex/cuadria-foundation`. Se guardó `SUPABASE_SERVICE_ROLE_KEY` como Secret de esa rama Preview; se verificaron en memoria el rol `service_role` y el proyecto de destino. El valor no se escribió en archivos, Git ni salidas; se limpió el portapapeles usado para la transferencia. Vercel confirmó el guardado. Se inició el redespliegue `7TCzn1HRfgWzEfYUGgSnJbykc7XA` del commit `86b03b2` en Preview para aplicar la configuración.
+El usuario autorizó expresamente copiar la clave administrativa existente de Supabase al proyecto Vercel canónico, exclusivamente para `codex/cuadria-foundation`. Se guardó `SUPABASE_SERVICE_ROLE_KEY` como Secret de esa rama Preview; se verificaron en memoria el rol `service_role` y el proyecto de destino. El valor no se escribió en archivos, Git ni salidas; se limpió el portapapeles usado para la transferencia. Vercel confirmó el guardado. Se inició un redespliegue del commit `86b03b2` en Preview para aplicar la configuración.
 
 Vercel confirmó el redespliegue en estado Ready (42 segundos), conservando el alias Preview de la rama. No equivale a una prueba de entrega de invitación.
 

@@ -4,7 +4,7 @@ Administrador de caja menor para empleados y supervisión de su superior.
 
 Plataforma web multiempresa para administrar fondos de efectivo y cuentas operativas en Colombia. Idioma español, COP enteros y zona horaria America/Bogota.
 
-**Estado:** base funcional ampliada con borradores, auditoría, cierres, reportes e invitaciones. Hay un proyecto Supabase conectado con las migraciones aplicadas y una Preview de Vercel protegida, pero sin separación entre desarrollo y producción ni circuito de aceptación completo. Una auditoría independiente ([informe](docs/AUDIT_REPORT.md)) dejó hallazgos que bloquean el piloto. El MVP completo y el piloto con dinero real **no están aprobados**. Consulta [el progreso detallado](docs/PROGRESS.md) y [los runbooks de operación](docs/OPERATIONS.md).
+**Estado:** base funcional ampliada con borradores, auditoría, cierres, reportes e invitaciones. Hay un proyecto Supabase conectado con las siete migraciones iniciales aplicadas (las cuatro correcciones de la auditoría, `202610210001` a `202610210004`, **todavía no**) y una Preview de Vercel protegida, pero sin separación entre desarrollo y producción ni circuito de aceptación completo. Una auditoría independiente ([informe](docs/AUDIT_REPORT.md)) dejó hallazgos que bloquean el piloto. El MVP completo y el piloto con dinero real **no están aprobados**. Consulta [el progreso detallado](docs/PROGRESS.md) y [los runbooks de operación](docs/OPERATIONS.md).
 
 ## Implementación disponible
 
@@ -13,7 +13,7 @@ Plataforma web multiempresa para administrar fondos de efectivo y cuentas operat
 - Migraciones PostgreSQL para empresas, membresías, asignaciones, fondos, categorías, movimientos, asientos, revisiones, arqueos/conciliaciones y auditoría.
 - Formularios conectados a RPCs de Supabase para crear empresas/fondos, asignar usuarios existentes, contabilizar, revisar, reversar y declarar saldos.
 - Motor transaccional, idempotencia, bloqueo de fondos en orden estable, protección de sobregiros y cantidades exactas.
-- Comprobantes privados JPG/PNG/PDF, reserva de ruta y enlace temporal de 60 segundos. El bucket admite hasta 10 MiB, pero en Vercel un archivo que viaja dentro de una Server Action falla a partir de unos 4,5 MB (H-07). La carga pasa a ir directa del navegador a Storage con una URL de subida firmada; hasta verificarla en el despliegue remoto, no prometer 10 MB a los usuarios.
+- Comprobantes privados JPG/PNG/PDF de hasta 10 MiB. El archivo ya no viaja dentro de una Server Action (que en Vercel falla a partir de unos 4,5 MB, H-07): se reserva, el navegador lo sube directamente a Storage con una URL de subida firmada y el servidor verifica los bytes y firma su veredicto antes de marcarlo como verificado. Enlaces de lectura de 60 segundos. **La subida directa y el límite de 10 MiB aún no se han verificado en el despliegue remoto**: hasta hacerlo (archivos de 4,4, 5 y 9,9 MB), no prometer 10 MB a los usuarios.
 - Borradores con versión, revisión de arqueos, cierres de períodos inmutables y respuestas a observaciones.
 - Invitaciones verificadas por correo, categorías, estado de fondos y alertas operativas.
 - Reportes filtrables con detalle paginado, exportación CSV de página actual y PDF de resumen por fondo.
@@ -38,6 +38,8 @@ Abre http://localhost:3000. Sin las variables Supabase, la aplicación muestra l
 | `NEXT_PUBLIC_SUPABASE_URL`             | URL del proyecto autorizado                                     |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Clave pública sujeta a RLS                                      |
 | `NEXT_PUBLIC_APP_URL`                  | Origen exacto de esta instalación; localhost:3000 en desarrollo |
+
+`RECEIPT_VERIFICATION_SECRET` (solo servidor, al menos 32 caracteres) es obligatoria para verificar comprobantes y debe coincidir con el secreto `cuadria_receipt_verification` de Supabase Vault ([OPERATIONS §13](docs/OPERATIONS.md#13-secreto-de-verificación-de-comprobantes-r-01)); sin ella los comprobantes quedan pendientes.
 
 `SUPABASE_SERVICE_ROLE_KEY` es opcional y se utiliza exclusivamente en servidor para enviar invitaciones mediante Auth Admin. Las operaciones financieras y consultas usan la sesión del usuario y no requieren esa clave. Configurar también SMTP autorizado para correo. No guardar secretos en Git ni pegarlos en el chat. La creación del propietario se realiza por una vía privilegiada separada, descrita en [despliegue](docs/DEPLOYMENT.md).
 
@@ -91,7 +93,7 @@ La variable solo se aplica si está definida. Con otra revisión del navegador e
 
 ### Alcance de las pruebas
 
-Los tests unitarios/de SQL usan PGlite (PostgreSQL embebido) con Auth y tablas Storage mínimas de prueba; `auth.uid()`, `auth.role()` y `auth.jwt()` replican la definición de Supabase. No equivalen a una prueba de Supabase Auth, entrega de correo, Storage HTTP o concurrencia por HTTP. Los E2E actuales cubren la instalación sin configurar; falta el circuito autenticado completo.
+Los tests de SQL usan PGlite (PostgreSQL embebido) con todas las migraciones y sustitutos compartidos de Auth, Storage, Vault y pgcrypto (`tests/helpers/db.ts`); `auth.uid()`, `auth.role()` y `auth.jwt()` replican la definición de Supabase. Las Server Actions y las rutas (`/reportes/csv`, `/reportes/pdf`, `/comprobantes/[id]`) tienen pruebas con un cliente Supabase simulado (`tests/app-*.test.ts`). No equivalen a una prueba de Supabase Auth, entrega de correo, Storage HTTP o concurrencia por HTTP. Los E2E actuales cubren la instalación sin configurar; falta el circuito autenticado completo.
 
 ## Documentación
 

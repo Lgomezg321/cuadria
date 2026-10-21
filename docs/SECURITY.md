@@ -51,7 +51,20 @@ En cada revisión: ejecutar `npm view braces version` y `npm audit`; si hay vers
 
 - Nunca en Git, chats, logs ni capturas. `.env.local` está ignorado.
 - `SUPABASE_SERVICE_ROLE_KEY` es exclusiva del servidor y solo de producción (ver OPERATIONS §1).
+- `RECEIPT_VERIFICATION_SECRET` firma los veredictos de comprobantes (R-01). Es exclusiva del servidor, de al menos 32 caracteres, distinta por entorno y con el mismo valor en Supabase Vault (`cuadria_receipt_verification`); procedimiento y rotación en OPERATIONS §13.
 - Si un secreto se expone, rotarlo primero y documentar después.
+
+## Riesgos aceptados o pendientes
+
+### RSK-2026-01 · Escritura de `service_role` fuera de las tablas financieras
+
+| Campo      | Valor                                                                                                                                                                                                                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Situación  | `202610210002` retira a `service_role` la escritura directa sobre las tablas de dinero (`funds`, `movements`, `entries`, `reviews`, `checks`, `check_reviews`, `period_closures`, `audit_events`). Conserva escritura en `memberships`, `installation_owners`, `assignments` y `receipts` |
+| Riesgo     | Quien obtenga la clave secreta podría darse membresías o rol de propietario, asignarse fondos o alterar metadatos y estados de comprobantes sin pasar por las RPC ni dejar auditoría                                                                                                      |
+| Mitigación | La clave solo está en el servidor de producción y solo se usa para `inviteUserByEmail` (OPERATIONS §1). Los asientos y saldos siguen protegidos por triggers y por la revocación anterior                                                                                                 |
+| Decisión   | Pendiente del propietario: revocar también esa escritura en una migración futura tras comprobar en dev que Auth Admin y los procesos de soporte no la necesitan. No verificado contra Supabase real                                                                                       |
+| Revisión   | Antes del piloto con dinero real                                                                                                                                                                                                                                                          |
 
 ## Reporte de vulnerabilidades
 

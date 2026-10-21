@@ -24,6 +24,7 @@ Reglas para usar esta guía:
 10. [Repositorio, secret scanning y push protection](#10-repositorio-secret-scanning-y-push-protection-h-43)
 11. [Aplicación ordenada de migraciones nuevas](#11-aplicación-ordenada-de-migraciones-nuevas)
 12. [Checklist verificable y acta](#12-checklist-verificable-y-acta)
+13. [Secreto de verificación de comprobantes](#13-secreto-de-verificación-de-comprobantes-r-01)
 
 ---
 
@@ -79,12 +80,13 @@ Registrar la opción elegida y el motivo en el acta.
 
 En Vercel → proyecto `cuadria` → Settings → Environment Variables:
 
-| Variable                               | Production (solo `main`)                     | Preview                                                          | Development |
-| -------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------- | ----------- |
-| `NEXT_PUBLIC_SUPABASE_URL`             | URL de prod                                  | URL de dev                                                       | URL de dev  |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | clave publicable de prod                     | clave publicable de dev                                          | dev         |
-| `NEXT_PUBLIC_APP_URL`                  | dominio de producción                        | URL estable de Preview                                           | localhost   |
-| `SUPABASE_SERVICE_ROLE_KEY`            | clave secreta de prod, marcada **Sensitive** | **ninguna** o, si hace falta probar invitaciones, solo la de dev | ninguna     |
+| Variable                               | Production (solo `main`)                       | Preview                                                          | Development    |
+| -------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------- | -------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`             | URL de prod                                    | URL de dev                                                       | URL de dev     |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | clave publicable de prod                       | clave publicable de dev                                          | dev            |
+| `NEXT_PUBLIC_APP_URL`                  | dominio de producción                          | URL estable de Preview                                           | localhost      |
+| `SUPABASE_SERVICE_ROLE_KEY`            | clave secreta de prod, marcada **Sensitive**   | **ninguna** o, si hace falta probar invitaciones, solo la de dev | ninguna        |
+| `RECEIPT_VERIFICATION_SECRET`          | valor de prod (= Vault de prod), **Sensitive** | valor de dev (= Vault de dev), **Sensitive**                     | opcional (dev) |
 
 1. Eliminar `SUPABASE_SERVICE_ROLE_KEY` de Preview (incluido el valor asociado a la rama de trabajo).
 2. Volver a desplegar la Preview: las variables se leen al compilar y al arrancar.
@@ -340,19 +342,20 @@ El repositorio es público y la documentación histórica expone datos operativo
 
 ## 11. Aplicación ordenada de migraciones nuevas
 
-Aplica a `202610210001`, `202610210002` y `202610210003` (correcciones de la auditoría) y a cualquier migración futura.
+Aplica a `202610210001`, `202610210002`, `202610210003` y `202610210004` (correcciones de la auditoría y de la revisión posterior) y a cualquier migración futura.
 
 Requisitos previos:
 
 - PR con el workflow Quality en verde, incluido `test:concurrency` sobre PostgreSQL 17 con todas las migraciones.
-- Notas del PR revisadas: si una migración cambia la firma de una RPC (por ejemplo, añadir `p_key`), la aplicación nueva y la migración deben publicarse en la misma ventana, con Skew Protection activa (sección 5).
+- Notas del PR revisadas: si una migración cambia la firma de una RPC (por ejemplo, añadir `p_key` o `p_signature` en `confirm_receipt`), la aplicación nueva y la migración deben publicarse en la misma ventana, con Skew Protection activa (sección 5).
+- Para `202610210004`: el secreto de la sección 13 creado en Vault **y** en Vercel antes de desplegar; sin él los comprobantes nuevos quedan pendientes (falla cerrado).
 - Copia lógica reciente del entorno de destino (sección 8.2).
 
 Procedimiento, **primero en dev** y después en prod:
 
 1. `npx supabase link --project-ref <ref-dev>`.
-2. `npx supabase db push --dry-run`. Esperado: solo las migraciones nuevas, en orden ascendente (`202610210001`, `202610210002`, `202610210003`). Si aparece cualquier otra, detenerse.
-3. `npx supabase db push` y `npx supabase migration list`: las tres figuran como aplicadas.
+2. `npx supabase db push --dry-run`. Esperado: solo las migraciones nuevas, en orden ascendente (`202610210001`, `202610210002`, `202610210003`, `202610210004`). Si aparece cualquier otra, detenerse.
+3. `npx supabase db push` y `npx supabase migration list`: las cuatro figuran como aplicadas. Anotar cuántas reversiones antiguas quedaron exentas: `select count(*) from private.reversal_review_exemptions;` (cada una tiene su evento `reversal.review_exempted`).
 4. Si se aplicaron desde SQL Editor (un archivo por vez, en orden y dentro de una transacción), registrar el historial con `npx supabase migration repair --status applied <versión>`.
 5. Comprobaciones en SQL Editor: la consulta de RLS de la sección 1.1 (`sin_rls = 0`), la conciliación saldo = asientos de la sección 8.4 (0 filas) y que las funciones `SECURITY DEFINER` siguen con `search_path` fijo:
    ```sql
@@ -389,6 +392,31 @@ Copiar esta tabla al acta (fuera del repositorio si contiene datos sensibles) y 
 | 14  | Ensayo de restauración de base y `receipts`                       | H-02       | Conciliación sin diferencias y duración ≤ RTO                   |                                | ☐      |
 | 15  | Procedimiento de baja ensayado con un usuario de prueba           | H-37       | Verificación de la sección 9                                    |                                | ☐      |
 | 16  | Visibilidad del repo decidida; secret scanning/push protection    | H-43       | Settings → Code security                                        |                                | ☐      |
-| 17  | Migraciones `202610210001`-`003` en dev y luego en prod           | —          | `supabase migration list` en ambos                              |                                | ☐      |
+| 17  | Migraciones `202610210001`-`004` en dev y luego en prod           | —          | `supabase migration list` en ambos                              |                                | ☐      |
+| 18  | Secreto de comprobantes en Vault y en Vercel (mismo valor)        | R-01       | Comprobante de prueba queda `verified`; sección 13              |                                | ☐      |
+| 19  | Segundo administrador por empresa para revisar reversiones        | R-02       | Directorio de miembros con dos admins activos                   |                                | ☐      |
 
 Plantilla de acta por actividad: fecha y hora (America/Bogota), entorno, responsable, commit desplegado, pasos ejecutados, resultado esperado y observado, duración, incidencias y decisión. Sin secretos.
+
+---
+
+## 13. Secreto de verificación de comprobantes (R-01)
+
+Desde `202610210004`, `confirm_receipt` solo marca un comprobante como verificado si recibe el veredicto firmado por el servidor de la aplicación (HMAC-SHA256). El mismo secreto vive en dos sitios: Supabase Vault (lo lee la base de datos) y la variable de servidor `RECEIPT_VERIFICATION_SECRET` en Vercel (la usa la aplicación). No se usa `service_role`.
+
+1. Generar un valor aleatorio de al menos 32 caracteres, sin espacios, en un equipo de confianza (por ejemplo `openssl rand -hex 32`). Un valor distinto por proyecto (dev y prod). Guardarlo solo en el gestor de contraseñas del propietario.
+2. Supabase → SQL Editor del proyecto, como `postgres`:
+   ```sql
+   select vault.create_secret('<valor>', 'cuadria_receipt_verification', 'Firma de veredictos de comprobantes (CUADRIA)');
+   ```
+   No dejar el valor en el historial de consultas guardadas ni en capturas. Comprobar sin mostrarlo:
+   ```sql
+   select name, length(decrypted_secret) >= 32 as ok from vault.decrypted_secrets where name = 'cuadria_receipt_verification';
+   select n.nspname from pg_extension x join pg_namespace n on n.oid = x.extnamespace where x.extname = 'pgcrypto';
+   ```
+   Esperado: una fila con `ok = true`; `pgcrypto` instalada (en Supabase, esquema `extensions`). Si no estuviera: Database → Extensions → pgcrypto.
+3. Vercel → proyecto `cuadria` → Settings → Environment Variables: `RECEIPT_VERIFICATION_SECRET` con el **mismo** valor, marcada Sensitive, en Production (valor de prod) y en Preview (valor de dev). Nunca con prefijo `NEXT_PUBLIC_`. Redesplegar.
+4. Prueba: cargar un comprobante en dev con un usuario de prueba. Esperado: queda verificado. Si el secreto falta o no coincide, la aplicación muestra que la verificación no está configurada o no pudo confirmarse, y el comprobante queda pendiente (falla cerrado); revisar los logs (`receipt.verification_not_configured`).
+5. Rotación: crear el valor nuevo, actualizarlo a la vez en Vault (`select vault.update_secret(id, '<valor-nuevo>') from vault.secrets where name = 'cuadria_receipt_verification';`) y en Vercel, y redesplegar. Durante el intervalo entre ambos cambios las confirmaciones fallan y se pueden reintentar; los comprobantes ya verificados no se ven afectados.
+
+La función que lee el secreto es `SECURITY DEFINER` y propiedad del rol que aplica las migraciones; verificar en dev que ese rol puede leer `vault.decrypted_secrets` (paso 4).

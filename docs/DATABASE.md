@@ -2,65 +2,133 @@
 
 ## Migraciones
 
-1. `202610190001_core.sql`: dominio monetario, esquema relacional, permisos, políticas RLS y funciones transaccionales.
-2. `202610190002_receipts.sql`: metadatos inmutables y bucket privado con políticas de lectura/carga.
+Se aplican en orden de nombre. Nunca se edita una migración ya aplicada: las correcciones van en una migración nueva (ver [OPERATIONS.md §11](OPERATIONS.md#11-aplicación-ordenada-de-migraciones-nuevas)).
 
-3. `202610190003_drafts_closures.sql`: borradores/versiones, revisión de arqueos y cierres congelados.
-4. `202610190004_reports.sql`: agregados y detalle paginado con RLS.
-5. `202610190005_administration.sql`: invitaciones, categorías, estado de fondos, directorio y alertas.
-6. `202610190006_audit_conversation.sql`: comentarios inmutables y detalle histórico autorizado.
+| #   | Archivo                                 | Contenido                                                                                                                                                       |
+| --- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `202610190001_core.sql`                 | Dominio monetario `cop`, esquema relacional, RLS, helpers privados de permisos y RPC transaccionales base                                                       |
+| 2   | `202610190002_receipts.sql`             | Metadatos de comprobantes y bucket privado `receipts` con políticas de lectura y carga                                                                          |
+| 3   | `202610190003_drafts_closures.sql`      | Borradores con versión, revisión de arqueos, cierres congelados y `controls_snapshot`                                                                           |
+| 4   | `202610190004_reports.sql`              | `financial_report`: totales y detalle paginado con RLS                                                                                                          |
+| 5   | `202610190005_administration.sql`       | Invitaciones, categorías, estado de fondos, directorio y alertas                                                                                                |
+| 6   | `202610190006_audit_conversation.sql`   | Comentarios inmutables y `movement_detail`                                                                                                                      |
+| 7   | `202610200001_private_requests_rls.sql` | RLS en `private.fund_requests`                                                                                                                                  |
+| 8   | `202610210001_membership_security.sql`  | Gobierno de administradores, `set_member_active`, invitaciones rechazadas y límites, privilegios por defecto, grants por columnas (H-04, H-19 a H-22, H-44-46)  |
+| 9   | `202610210002_financial_integrity.sql`  | Registro de idempotencia por operación, retroactividad, reversiones con revisión, `p_key` en revisiones y arqueos, inmutabilidad, cierres (H-05, H-06, H-23-30) |
+| 10  | `202610210003_receipt_verification.sql` | Comprobantes como máquina de estados verificada, subida directa a Storage y `confirm_receipt` (H-07, H-18, H-29, H-33)                                          |
+| 11  | `202610210004_integration_fixes.sql`    | Veredicto de comprobante firmado (HMAC con secreto en Vault), exención auditada de reversiones antiguas y `alerts_snapshot` con reversiones (R-01, R-02)        |
 
-Las migraciones requieren Supabase con `auth.users`, `auth.uid()`, roles `anon`/`authenticated` y esquema Storage. Las pruebas locales crean sustitutos mínimos de estos elementos. No aplicar los sustitutos de pruebas sobre Supabase.
+Las migraciones 8 a 11 corrigen la auditoría de 21-10-2026 y **no están aplicadas en ningún proyecto remoto**: se probaron con PGlite y con PostgreSQL 16 desechable (concurrencia).
+
+Requieren Supabase con `auth.users`, `auth.uid()`, roles `anon`/`authenticated`/`service_role` y el esquema Storage. Las pruebas (`tests/helpers/db.ts` y `scripts/test-concurrency.mjs`) crean sustitutos de esos elementos, incluidos los privilegios por defecto de Supabase y `storage.objects` con `owner`, `owner_id` y `metadata`. **No aplicar los sustitutos sobre Supabase.**
 
 ## Entidades
 
-| Entidad               | Responsabilidad                                                                                 |
-| --------------------- | ----------------------------------------------------------------------------------------------- |
-| installation_owners   | Propietario configurado fuera del acceso cliente                                                |
-| companies             | Empresas y NIT único                                                                            |
-| memberships           | Usuario, empresa, rol y vigencia                                                                |
-| funds                 | Fondo, empresa, moneda COP, saldo y estado                                                      |
-| assignments           | Responsabilidad por intervalos; conserva asignaciones finalizadas                               |
-| categories            | Categorías pertenecientes a una empresa                                                         |
-| movements             | Operaciones contabilizadas, dos estados independientes, creador, fecha operativa e idempotencia |
-| entries               | Asientos inmutables por movimiento/fondo                                                        |
-| reviews               | Historial inmutable de decisiones                                                               |
-| checks                | Arqueos y conciliaciones al momento del registro, con diferencia congelada                      |
-| receipts              | Metadatos y ruta de objeto privado                                                              |
-| audit_events          | Actor, evento, entidad, detalle y momento                                                       |
-| private.fund_requests | Idempotencia de creación de fondos, incluso con apertura cero                                   |
+| Entidad                            | Responsabilidad                                                                                                                                                   |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| installation_owners                | Propietario de instalación, configurado fuera del acceso cliente (`supabase/bootstrap-owner.sql`). Sin política ni grant                                          |
+| companies                          | Empresa, NIT único y `created_by` (creador explícito; antes solo constaba en la auditoría)                                                                        |
+| memberships                        | Usuario, empresa, rol (`admin`, `employee`, `auditor`) y `active`                                                                                                 |
+| funds                              | Fondo de la empresa, COP, `balance` (proyección de los asientos), `active` y `closed_through`                                                                     |
+| assignments                        | Responsabilidad de un empleado sobre un fondo por intervalos (`started_at`, `ended_at`); se conservan las finalizadas                                             |
+| categories                         | Categorías de una empresa                                                                                                                                         |
+| movements                          | Operación con estado financiero (`posted`/`reversed`) y de revisión (`pending`/`approved`/`observed`/`rejected`) independientes, `reversal_of`, clave y solicitud |
+| entries                            | Asientos inmutables por movimiento y fondo; la suma por fondo es el saldo                                                                                         |
+| reviews                            | Historial inmutable de decisiones sobre movimientos                                                                                                               |
+| checks / check_reviews             | Arqueos y conciliaciones con saldo teórico congelado bajo bloqueo; decisiones sobre ellos                                                                         |
+| drafts                             | Borradores del autor con `version`; no crean asientos hasta `submit_draft`                                                                                        |
+| period_closures                    | Cierres inmutables por fondo y fecha inclusive. Flujos en `numeric`; saldos inicial y final `>= 0` en cierres nuevos                                              |
+| receipts                           | Metadatos de comprobantes: `status` (`pending`/`verified`/`rejected`/`expired`), `status_reason`, `resolved_at`, `idempotency_key`, `request_payload`             |
+| invitations                        | Correo normalizado, rol, invitador, vencimiento y un único desenlace: `accepted_*`, `revoked_at` o `rejected_at` + `rejected_reason`                              |
+| movement_comments                  | Respuestas inmutables e idempotentes del autor o de un administrador                                                                                              |
+| audit_events                       | Actor, acción, entidad, detalle y momento                                                                                                                         |
+| private.operation_requests         | Registro de idempotencia por actor y clave: operación, contenido normalizado y resultado. Autoritativo desde 202610210002                                         |
+| private.fund_requests              | Registro heredado de creación de fondos; se mantiene por continuidad                                                                                              |
+| private.reversal_review_exemptions | Reversiones creadas antes de 202610210002 que seguían pendientes: no bloquean cierres. Inmutable, sin grants, cada fila con evento `reversal.review_exempted`     |
 
-Las claves compuestas empresa/fondo y empresa/categoría impiden relaciones entre empresas. Los roles cliente tienen SELECT autorizado por RLS y EXECUTE de RPCs concretas; no tienen INSERT/UPDATE/DELETE sobre tablas de dominio.
+Las claves compuestas empresa/fondo y empresa/categoría impiden relaciones entre empresas.
 
-## Funciones
+## Privilegios
 
-- `create_company`: solo propietario; asigna admin explícito y categoría General.
-- `assign_member`: admin de la empresa; solo usuarios Auth existentes; no permite modificar el rol propio.
-- `create_fund`: admin, apertura no negativa, asiento si es mayor que cero, auditoría siempre e idempotencia.
-- `assign_fund`: admin, miembro empleado activo, inicio o fin del intervalo.
-- `post_movement`: permisos de operación en ambos fondos, importe positivo, validación de fecha, bloqueo de fondos, no sobregiro.
-- `review_movement`: admin, autor diferente, aprobar/observar y auditoría; no afecta dinero.
-- `reverse_movement`: admin, motivo obligatorio, compensación atómica, una reversión por original; no reversa aperturas ni reversiones.
-- `record_check`: captura saldo bajo bloqueo; cuenta bancaria produce conciliación manual.
-- `reserve_receipt`: solo autor con permiso vigente; no adjuntar a aprobado/reversado.
-- `workspace_snapshot`: SECURITY INVOKER, RLS activa y cantidades convertidas a texto.
+- RLS en todas las tablas de `public` y `private`. `authenticated` solo tiene `SELECT` (filtrado por RLS) y `EXECUTE` sobre una lista blanca de RPC; nunca `INSERT`/`UPDATE`/`DELETE`/`TRUNCATE` directos. `anon` no tiene privilegios.
+- **Grants por columnas** (H-46): en `movements`, `authenticated` lee todas las columnas salvo `request_payload` e `idempotency_key`; en `receipts`, todas salvo `idempotency_key` y `request_payload`. Por eso las funciones `SECURITY INVOKER` que leen `movements` (`workspace_snapshot`, `movement_detail`, `alerts_snapshot`, `financial_report`) nombran columnas explícitas y nunca usan `select *` ni `to_jsonb(m)` sobre la fila completa.
+- Los privilegios por defecto de `public` se revocan para `anon`, `authenticated` y `PUBLIC` (tablas, secuencias y funciones futuras; H-44). Las secuencias no son utilizables por los roles cliente.
+- `service_role` conserva lectura, pero pierde la escritura directa sobre las tablas financieras (`funds`, `movements`, `entries`, `reviews`, `checks`, `check_reviews`, `period_closures`, `audit_events`) y el acceso a los registros de idempotencia (H-30). Pendiente de verificar en Supabase real.
+- `tests/security.test.ts` compara los grants del catálogo con una lista blanca (H-15).
 
-Funciones elevadas usan search_path vacío y referencias calificadas. Los helpers privados solo comprueban permisos; no permiten acceder a información fuera de la membresía actual.
+## Funciones (RPC)
+
+Todas las `SECURITY DEFINER` usan `search_path=''`, referencias calificadas y autorizan con `auth.uid()` en cada llamada. Las que bloquean filas autorizan primero sin bloquear, bloquean y vuelven a autorizar (H-45). Los fondos se bloquean en orden de UUID. "Idempotente" significa: misma clave del mismo actor y mismo contenido devuelven el resultado original (antes de volver a autorizar, H-48); otro contenido u otra operación con la misma clave dan `IDEMPOTENCY_CONFLICT`.
+
+### Empresas, membresías e invitaciones
+
+| Firma                                                                 | Regla                                                                                                                                                                                                              |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `create_company(p_name text, p_nit text) → uuid`                      | Solo propietario de instalación. Registra `created_by`, membresía admin explícita y categoría General                                                                                                              |
+| `assign_member(p_company uuid, p_user uuid, p_role text)`             | Admin. Solo cambia el rol de miembros **activos existentes** (`MEMBER_NOT_FOUND`, `MEMBER_INACTIVE`); nunca da de alta. Cierra asignaciones vigentes y audita rol anterior y nuevo                                 |
+| `set_member_active(p_company uuid, p_user uuid, p_active boolean)`    | Única vía para desactivar o reactivar. Desactivar cierra asignaciones y revoca invitaciones pendientes del afectado. Reactivar no restaura asignaciones                                                            |
+| `create_invitation(p_company uuid, p_email text, p_role text) → uuid` | Admin. Correo normalizado; `MEMBERSHIP_EXISTS` si ya es miembro; 1 por correo y minuto, 20 por actor y 50 por empresa en 24 h. Invitar como admin exige gestor de administradores                                  |
+| `accept_invitations() → integer`                                      | Correo **confirmado** de `auth.users`. Acepta solo si crea la membresía; si el invitador ya no es admin activo (o ya no puede otorgar admin) o la persona ya es miembro, la invitación queda `rejected` con motivo |
+| `revoke_invitation(p_id uuid)`                                        | Admin de la empresa; idempotente; no aplica a aceptadas ni rechazadas                                                                                                                                              |
+| `member_directory(p_company uuid) → jsonb`                            | Admin y auditor. Los auditores no ven el correo de miembros inactivos. Incluye `creator`                                                                                                                           |
+
+**Gobierno de administradores (H-04):** gestor = admin activo que además es creador de la empresa o propietario de instalación. Solo un gestor otorga, cambia o retira el rol admin. La membresía de un propietario de instalación no se modifica por RPC; la del creador solo la modifica un propietario. Nadie cambia su propia membresía y siempre queda al menos un admin activo (`LAST_ACTIVE_ADMIN`). La separación autor/revisor es por cuenta de Auth, no por persona (H-26): dos cuentas de la misma persona no se detectan.
+
+### Fondos, movimientos y revisiones
+
+| Firma                                                                                                                                                        | Regla                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create_fund(p_company uuid, p_name text, p_kind text, p_opening text, p_key uuid) → uuid`                                                                   | Admin; apertura `0` o entero positivo como texto; asiento solo si es mayor que cero; idempotente                                                                                                      |
+| `assign_fund(p_fund uuid, p_user uuid, p_end boolean default false)`                                                                                         | Admin. Iniciar exige empleado activo; finalizar no depende del rol actual (H-20)                                                                                                                      |
+| `set_fund_active(p_fund uuid, p_active boolean)`                                                                                                             | Admin; desactivar exige saldo cero                                                                                                                                                                    |
+| `create_category(p_company uuid, p_name text) → uuid`                                                                                                        | Admin de la empresa                                                                                                                                                                                   |
+| `post_movement(p_fund uuid, p_destination uuid, p_category uuid, p_kind text, p_amount text, p_concept text, p_date date, p_key uuid) → uuid`                | Escritura en origen y destino, misma empresa, importe `^[1-9][0-9]{0,17}$` como texto, fecha no futura ni cerrada ni anterior a la apertura del fondo, sin sobregiro actual ni histórico; idempotente |
+| `save_draft(p_id uuid, p_version integer, p_fund uuid, p_destination uuid, p_category uuid, p_kind text, p_amount text, p_concept text, p_date date) → uuid` | Autor con escritura; control de versión optimista; no contabiliza                                                                                                                                     |
+| `submit_draft(p_id uuid, p_version integer) → uuid`                                                                                                          | Autor; contabiliza con el mismo motor en su propio espacio de idempotencia (un borrador no adopta un movimiento previo, H-28)                                                                         |
+| `review_movement(p_movement uuid, p_decision text, p_comment text, p_key uuid) → uuid`                                                                       | Admin distinto del autor; aprobar u observar sin tocar dinero; reabrir una aprobación exige motivo (H-25); prohibido en período cerrado; idempotente                                                  |
+| `reverse_movement(p_movement uuid, p_reason text, p_key uuid) → uuid`                                                                                        | Admin; motivo obligatorio; compensación con fecha de hoy; una sola por original; nunca sobre aperturas o reversiones; rechaza fondos inactivos (H-06); idempotente                                    |
+| `comment_movement(p_id uuid, p_movement uuid, p_body text) → uuid`                                                                                           | Autor o admin; inmutable; idempotente por `p_id`                                                                                                                                                      |
+| `record_check(p_fund uuid, p_declared text, p_note text, p_key uuid) → uuid`                                                                                 | Escritura en el fondo; saldo teórico capturado bajo bloqueo; nunca ajusta el saldo; idempotente                                                                                                       |
+| `review_check(p_check uuid, p_decision text, p_comment text, p_key uuid) → uuid`                                                                             | Admin distinto del autor; una aprobación cierra el historial; idempotente                                                                                                                             |
+| `close_period(p_fund uuid, p_cutoff date, p_note text) → uuid`                                                                                               | Admin; exige revisión aprobada de todo lo contabilizado del período, **incluidas las reversiones**; saldos `>= 0`; congela totales, IDs y decisiones                                                  |
+
+### Comprobantes
+
+| Firma                                                                                            | Regla                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reserve_receipt(p_movement uuid, p_name text, p_mime text, p_size integer, p_key uuid) → jsonb` | Autor del movimiento con escritura, no aprobado. Valida nombre, MIME (JPG/PNG/PDF) y tamaño (1 B a 10 MiB); idempotente; máx. 5 pendientes, 20 pendientes+verificados y 50 en total por movimiento. Las pendientes de más de 3 h vencen                                                                                                                                                                                                                                                                                                                                         |
+| `confirm_receipt(p_receipt uuid, p_detected_mime text, p_size bigint, p_signature text) → jsonb` | Solo el autor y solo con el **veredicto firmado por el servidor** (R-01): `p_signature` = HMAC-SHA256 hex de `<recibo>\|<MIME detectado o vacío>\|<tamaño>\|<auth.uid()>` con el secreto de Vault `cuadria_receipt_verification` (pgcrypto `hmac`, esquema `extensions` en Supabase). Firma inválida: `RECEIPT_SIGNATURE_INVALID`; sin Vault, secreto (≥ 32 caracteres) o pgcrypto: `RECEIPT_VERIFICATION_NOT_CONFIGURED`. Después compara con el tamaño real y `storage.objects` (`metadata.size`, `metadata.mimetype`, propietario) y deja `verified` o `rejected` con motivo |
+
+Políticas de Storage: lectura de comprobantes `verified` para quien lee el fondo, y de los propios intentos para su autor; carga solo sobre una reserva `pending` propia de menos de 1 h; borrado solo de intentos propios `rejected`/`expired`. No hay `UPDATE`. Las filas de `receipts` nunca se borran; solo admiten la transición `pending → verified | rejected | expired`.
+
+### Lecturas
+
+| Firma                                                                                                                                                         | Regla                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspace_snapshot() → jsonb`                                                                                                                                | Invoker. Empresas, membresías propias, fondos y categorías autorizados; últimos 100 movimientos y arqueos; dinero como texto                                                                                                                                                                                                                                                                   |
+| `controls_snapshot() → jsonb`                                                                                                                                 | Invoker. Últimos 100 borradores pendientes, cierres y revisiones de arqueo                                                                                                                                                                                                                                                                                                                     |
+| `movement_detail(p_id uuid) → jsonb`                                                                                                                          | Invoker. Movimiento (columnas explícitas), revisiones y comentarios                                                                                                                                                                                                                                                                                                                            |
+| `financial_report(p_company uuid, p_fund uuid, p_from date, p_to date, p_kind text, p_review text, p_category uuid, p_author uuid, p_offset integer) → jsonb` | Invoker. Período de hasta 366 días; totales del período completo en orden determinista y detalle de 200 asientos por página                                                                                                                                                                                                                                                                    |
+| `alerts_snapshot() → jsonb`                                                                                                                                   | Invoker. `pending` (incluye reversiones; excluye aperturas y reversiones exentas), `pending_reversals` (las reversiones de `pending`), `observed`, `missing_receipts` (egresos sin comprobante **verificado**), `funds_with_difference`, `unverified_funds`. Usa `private.reversal_needs_review(uuid)`, ejecutable por `authenticated`, que solo responde sobre movimientos de fondos legibles |
+
+## Reglas de integridad
+
+- **Dinero:** `cop` es `numeric` validado como entero de hasta 18 dígitos; el JSON lo lleva como texto. Saldo del fondo = suma de sus asientos, mantenido en la misma transacción. `check (balance >= 0)`.
+- **Retroactividad (H-05):** no se aceptan fechas futuras, cerradas ni anteriores al día de creación del fondo (origen y destino). Con el fondo bloqueado, un egreso o transferencia no puede dejar negativo el saldo acumulado por `operation_date` en ningún día desde esa fecha (`HISTORICAL_OVERDRAFT`). No hay ventana máxima: los cierres limitan hasta dónde se puede retroceder.
+- **Reversiones con revisión (H-23, H-24, R-02):** la reversión es una operación propia (evento `reversal.posted`), no una revisión. Nace `pending` y necesita la aprobación de otro admin antes del cierre; `alerts_snapshot` la cuenta en `pending` y en `pending_reversals`. Si el original pertenece a un período cerrado, su decisión de revisión no cambia. Las reversiones anteriores a 202610210002 (sin evento `reversal.posted`) que seguían pendientes quedan exentas y auditadas por 202610210004; ninguna reversión nueva puede quedar exenta. **En una empresa con un solo administrador**, las reversiones (como cualquier movimiento registrado por un admin) necesitan invitar a un segundo administrador para revisarlas: es intencional (cuatro ojos).
+- **Inmutabilidad (H-30):** asientos, revisiones, arqueos, cierres, comentarios y auditoría no admiten `UPDATE`/`DELETE`; `TRUNCATE` está bloqueado por trigger de sentencia. En `movements` solo cambian `financial_status` (`posted → reversed`) y `review_status` por transiciones válidas.
+- **Idempotencia (H-28, H-29, H-48):** una clave por actor en todas las operaciones de dinero y control (`private.operation_requests`), atada a la operación y al contenido completo, con advisory lock por actor y clave.
+- **Comprobantes verificados (H-18, R-01):** solo un comprobante `verified` cuenta como evidencia (alertas, visor y `/comprobantes/[id]`), y solo el servidor de la aplicación, que inspecciona los bytes y firma el veredicto, puede marcarlo como verificado.
+- **Cierres:** corte inclusive en fecha de Bogotá; totales de flujo en `numeric` (H-27); la constraint de saldos no negativos es `NOT VALID` para no tocar cierres remotos ya congelados.
 
 ## Lectura y conservación
 
-Un empleado ve fondos con asignación vigente. Al finalizar su asignación deja de ver esos fondos y su historial; administradores y auditores de la empresa conservan acceso. Transferencias son visibles a quien puede consultar origen o destino; los asientos solo se leen en los fondos autorizados.
+Un empleado ve los fondos con asignación vigente y solo sus propias asignaciones. Al finalizar la asignación deja de ver esos fondos y su historial; administradores y auditores conservan el acceso. Las transferencias son visibles para quien puede consultar el origen o el destino.
 
-Los triggers impiden cambiar o eliminar asientos, revisiones, arqueos, comprobantes y eventos, incluso por una escritura privilegiada accidental. El rol administrador de la aplicación no equivale a propietario PostgreSQL.
+No se borran usuarios de Auth (las FK a `auth.users` no tienen `ON DELETE`): la baja sigue el procedimiento de [OPERATIONS.md §9](OPERATIONS.md#9-baja-de-personal-h-37).
 
-`period_closures` guarda fecha inclusive, corte anterior, saldo inicial, ingresos, egresos, transferencias/reversiones netas, saldo final, IDs incluidos y aprobador. `close_period` bloquea el fondo y los movimientos, exige revisión de operaciones contabilizadas y fija `closed_through`. Los totales permanecen inmutables. Una reversión posterior se contabiliza en su propia fecha abierta y no reescribe el cierre.
+## Pruebas y lo que falta verificar
 
-`drafts` pertenece a su autor y no crea asientos hasta `submit_draft`. La versión evita sobrescribir ediciones concurrentes. `check_reviews` documenta decisiones sin cambiar saldos. `movement_comments` registra respuestas inmutables e idempotentes del autor o administrador; auditores solo consultan.
-
-`invitations` conserva destinatario, rol, vencimiento y estado. La aceptación usa exclusivamente el correo confirmado de auth.users; no usa metadata del cliente ni reemplaza membresías existentes. `member_directory` expone correos solo a administradores/auditores de la empresa.
-
-`financial_report` mantiene RLS, serializa dinero como texto, separa transferencias y reversiones, devuelve totales del período completo y hasta 200 asientos por página. Filtros de tipo/estado/categoría/autor afectan el detalle, no el saldo completo del fondo. `movement_detail` permite abrir registros históricos fuera del snapshot de 100, sin omitir RLS.
-
-## Pruebas requeridas antes del piloto
-
-Aplicar migraciones en desarrollo y repetir pruebas con usuarios Auth reales, PostgREST y Storage real. Verificar precisión monetaria en JSON, RLS en llamadas directas, solicitudes concurrentes con varias conexiones y restauración de copia de seguridad. El CI proporciona un PostgreSQL desechable para pruebas de concurrencia, pero no sustituye el circuito Supabase completo.
+- `npm test`: PGlite con todas las migraciones (`tests/helpers/db.ts`), incluidas la lista blanca de grants y los casos de la auditoría.
+- `npm run test:concurrency`: PostgreSQL desechable con varias conexiones y carreras forzadas.
+- Falta verificar en un proyecto Supabase de desarrollo: aplicar las migraciones 8 a 11, PostgREST con JWT reales (RLS, grants por columnas), Storage real (metadatos, propietario, URLs firmadas de subida), que el propietario de las funciones lee `vault.decrypted_secrets` y que `pgcrypto` está en `extensions`, privilegios efectivos de `service_role`, y la restauración de copia de seguridad.
