@@ -5,12 +5,21 @@ on:
     branches: [main, "codex/**"]
 permissions:
   contents: read
+# One run per PR or branch: a newer push cancels the run still in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+env:
+  # Exact runtime versions (H-41). Update deliberately, together with docs/DEPLOYMENT.md.
+  NODE_VERSION: "24.22.0"
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     services:
       postgres:
-        image: postgres:17
+        # postgres 17.10 (Debian bookworm), pinned by multi-arch index digest.
+        image: postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f
         env:
           POSTGRES_PASSWORD: test-only-password
           POSTGRES_DB: cuadria_test
@@ -21,12 +30,23 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: "24"
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      - name: Production dependency audit (gate)
+        run: npm audit --omit=dev
+      - name: Full dependency audit (critical only; see docs/SECURITY.md)
+        run: npm audit --audit-level=critical
+      - name: Formatting
+        run: npm run format:check
+      - name: Whitespace and conflict markers in the whole tree
+        # 4b825dc… is Git's empty tree: every tracked file is checked.
+        run: git diff --check 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
@@ -34,6 +54,29 @@ jobs:
         env:
           CUADRIA_TEST_DATABASE_URL: postgresql://postgres:test-only-password@localhost:5432/cuadria_test
       - run: npm run build
+      # Installs the Chromium revision pinned by @playwright/test in package-lock.json.
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
-      - run: npm audit --omit=dev
+      - name: Tracked files unchanged by the pipeline
+        run: git diff --exit-code --stat
+
+  # Informational WebKit (Safari engine) run of the same E2E suite. It does not
+  # gate merges until it has been observed green; "verify" is the required check.
+  e2e-webkit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps webkit
+      - run: npx playwright test --project=mobile-webkit
+        env:
+          PLAYWRIGHT_WEBKIT: "1"
