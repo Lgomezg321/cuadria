@@ -663,7 +663,6 @@ describe("H-15 / H-44 · lista blanca de privilegios", () => {
     "memberships",
     "movement_comments",
     "period_closures",
-    "receipts",
     "reviews",
   ];
   const movementColumns = [
@@ -683,7 +682,21 @@ describe("H-15 / H-44 · lista blanca de privilegios", () => {
     "review_status",
     "reversal_of",
   ];
+  const receiptColumns = [
+    "created_at",
+    "id",
+    "mime_type",
+    "movement_id",
+    "object_path",
+    "original_name",
+    "resolved_at",
+    "size_bytes",
+    "status",
+    "status_reason",
+    "uploaded_by",
+  ];
   const executable = [
+    "private.can_discard_receipt(text)",
     "private.can_read_fund(uuid)",
     "private.can_read_receipt(text)",
     "private.can_upload_receipt(text)",
@@ -695,6 +708,7 @@ describe("H-15 / H-44 · lista blanca de privilegios", () => {
     "public.assign_member(uuid, uuid, text)",
     "public.close_period(uuid, date, text)",
     "public.comment_movement(uuid, uuid, text)",
+    "public.confirm_receipt(uuid, text, bigint)",
     "public.controls_snapshot()",
     "public.create_category(uuid, text)",
     "public.create_company(text, text)",
@@ -704,11 +718,11 @@ describe("H-15 / H-44 · lista blanca de privilegios", () => {
     "public.member_directory(uuid)",
     "public.movement_detail(uuid)",
     "public.post_movement(uuid, uuid, uuid, text, text, text, date, uuid)",
-    "public.record_check(uuid, text, text)",
-    "public.reserve_receipt(uuid, text, text, integer)",
+    "public.record_check(uuid, text, text, uuid)",
+    "public.reserve_receipt(uuid, text, text, integer, uuid)",
     "public.reverse_movement(uuid, text, uuid)",
-    "public.review_check(uuid, text, text)",
-    "public.review_movement(uuid, text, text)",
+    "public.review_check(uuid, text, text, uuid)",
+    "public.review_movement(uuid, text, text, uuid)",
     "public.revoke_invitation(uuid)",
     "public.save_draft(uuid, integer, uuid, uuid, uuid, text, text, text, date)",
     "public.set_fund_active(uuid, boolean)",
@@ -738,9 +752,14 @@ describe("H-15 / H-44 · lista blanca de privilegios", () => {
        and has_column_privilege(r.name,c.oid,a.attnum,p.priv) and not has_table_privilege(r.name,c.oid,p.priv) order by 1`,
     );
     expect([...columns].sort()).toEqual(
-      movementColumns
-        .map((col) => `authenticated SELECT public.movements.${col}`)
-        .sort(),
+      [
+        ...movementColumns.map(
+          (col) => `authenticated SELECT public.movements.${col}`,
+        ),
+        ...receiptColumns.map(
+          (col) => `authenticated SELECT public.receipts.${col}`,
+        ),
+      ].sort(),
     );
     expect(
       await list(
