@@ -57,9 +57,9 @@ it("acepta un año bisiesto completo (366 días) y la página por defecto", () =
   const r = parseReportFilters({ from: "2028-01-01", to: "2029-01-01" });
   expect(r.ok).toBe(true);
   expect(r.ok && r.value.offset).toBe(0);
-  expect(
-    parseReportFilters({ from: "2026-01-01", to: "2027-01-03" }).ok,
-  ).toBe(false);
+  expect(parseReportFilters({ from: "2026-01-01", to: "2027-01-03" }).ok).toBe(
+    false,
+  );
 });
 const sample: FinancialReport = {
   from: "2026-10-01",
