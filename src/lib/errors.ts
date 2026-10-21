@@ -24,6 +24,27 @@ const messages: Record<string, string> = {
   INVALID_REVIEW: "La revisión no es válida para este movimiento.",
   INVALID_DESTINATION: "Selecciona otro fondo autorizado de la misma empresa.",
   INVALID_DATE: "La fecha de operación no puede estar en el futuro.",
+  MEMBER_NOT_FOUND:
+    "La persona no es miembro de la empresa. Las altas se hacen únicamente por invitación.",
+  MEMBER_INACTIVE:
+    "La membresía está desactivada. Reactívala antes de cambiar su rol.",
+  PROTECTED_MEMBER:
+    "La membresía del propietario o del creador de la empresa no se puede modificar.",
+  ADMIN_CHANGE_RESTRICTED:
+    "Solo el creador de la empresa o el propietario de la instalación pueden otorgar, cambiar o desactivar el rol de administrador.",
+  LAST_ACTIVE_ADMIN:
+    "La empresa debe conservar al menos un administrador activo.",
+  INVALID_ROLE: "Selecciona un rol válido.",
+  INVALID_STATUS: "Selecciona un estado válido.",
+  MEMBERSHIP_EXISTS:
+    "Esa persona ya es miembro de la empresa. Cambia su rol o reactívala desde la lista de miembros.",
+  INVITATION_ACTOR_DAILY_LIMIT:
+    "Alcanzaste el límite de 20 invitaciones en 24 horas. Inténtalo más tarde.",
+  INVITATION_COMPANY_DAILY_LIMIT:
+    "La empresa alcanzó el límite de 50 invitaciones en 24 horas. Inténtalo más tarde.",
+  ASSIGNMENT_NOT_FOUND:
+    "La persona no tiene una responsabilidad vigente en este fondo.",
+  ALREADY_ASSIGNED: "La persona ya es responsable vigente de este fondo.",
 };
 export function publicError(error: { message: string; code?: string }): string {
   for (const [code, message] of Object.entries(messages))
