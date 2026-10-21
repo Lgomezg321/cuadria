@@ -45,6 +45,12 @@ const messages: Record<string, string> = {
   ASSIGNMENT_NOT_FOUND:
     "La persona no tiene una responsabilidad vigente en este fondo.",
   ALREADY_ASSIGNED: "La persona ya es responsable vigente de este fondo.",
+  INVALID_RECEIPT:
+    "El comprobante debe ser JPG, PNG o PDF, tener nombre y pesar como máximo 10 MB.",
+  RECEIPT_LIMIT:
+    "Este movimiento alcanzó el límite de comprobantes o de cargas pendientes. Espera a que venzan las cargas pendientes o revisa los adjuntos.",
+  RECEIPT_NOT_UPLOADED:
+    "El archivo todavía no aparece en el almacenamiento privado. Vuelve a intentarlo en unos segundos.",
 };
 export function publicError(error: { message: string; code?: string }): string {
   for (const [code, message] of Object.entries(messages))
