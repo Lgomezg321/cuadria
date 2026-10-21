@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     rules: { "*.css": { loaders: ["@tailwindcss/turbopack"], as: "*.css" } },
   },
-  experimental: { serverActions: { bodySizeLimit: "11mb" } },
+  experimental: { serverActions: { bodySizeLimit: "1mb" } },
   async headers() {
     return [
       {

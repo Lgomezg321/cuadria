@@ -1,35 +1,33 @@
 import Image from "next/image";
 import { requireUser } from "@/lib/auth";
+// Viewer for reviewers. It never embeds pre-signed URLs (which expired before
+// lazily loaded images were requested, H-33): each image points to
+// /comprobantes/<id>, which re-authorizes and signs on demand. PDFs are not
+// embedded; they open as a download (Content-Disposition: attachment).
 export async function ReceiptPreview({ movement }: { movement: string }) {
   const { supabase } = await requireUser();
   const { data, error } = await supabase
     .from("receipts")
-    .select("id,original_name,mime_type,object_path")
+    .select("id,original_name,mime_type")
     .eq("movement_id", movement)
+    .eq("status", "verified")
     .order("created_at")
     .limit(20);
   if (error) return <p>No fue posible consultar los comprobantes.</p>;
   if (!data?.length)
     return (
       <p className="text-sm text-stone-500">
-        Este movimiento no tiene comprobantes adjuntos.
+        Este movimiento no tiene comprobantes verificados.
       </p>
     );
-  const files = await Promise.all(
-    data.map(async (r) => {
-      const { data: link } = await supabase.storage
-        .from("receipts")
-        .createSignedUrl(r.object_path, 60);
-      return { ...r, url: link?.signedUrl };
-    }),
-  );
   return (
     <div className="space-y-6">
       <p className="text-xs leading-5 text-stone-500">
-        Vista de hasta 20 documentos. Los enlaces son privados y vencen en 60
-        segundos; vuelve a abrir el movimiento para renovarlos.
+        Vista de hasta 20 documentos verificados. Cada apertura se autoriza de
+        nuevo con tu sesión; los PDF se descargan para abrirlos fuera del
+        navegador de la aplicación.
       </p>
-      {files.map((r) => (
+      {data.map((r) => (
         <figure
           key={r.id}
           className="overflow-hidden rounded-xl border border-stone-200 bg-stone-50"
@@ -44,20 +42,20 @@ export async function ReceiptPreview({ movement }: { movement: string }) {
               {r.original_name} ↗
             </a>
           </figcaption>
-          {!r.url ? (
-            <p className="p-5 text-sm text-amber-800">
-              Archivo no disponible; la carga puede estar pendiente.
+          {r.mime_type === "application/pdf" ? (
+            <p className="p-5 text-sm text-stone-600">
+              Documento PDF.{" "}
+              <a
+                href={`/comprobantes/${r.id}`}
+                className="text-emerald-800 underline"
+              >
+                Descargar para revisarlo
+              </a>
+              .
             </p>
-          ) : r.mime_type === "application/pdf" ? (
-            <iframe
-              src={r.url}
-              title={`Comprobante ${r.original_name}`}
-              referrerPolicy="no-referrer"
-              className="h-[600px] w-full"
-            />
           ) : (
             <Image
-              src={r.url}
+              src={`/comprobantes/${r.id}`}
               alt={`Comprobante ${r.original_name}`}
               width={900}
               height={1200}

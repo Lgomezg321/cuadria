@@ -24,6 +24,12 @@ const messages: Record<string, string> = {
   INVALID_REVIEW: "La revisión no es válida para este movimiento.",
   INVALID_DESTINATION: "Selecciona otro fondo autorizado de la misma empresa.",
   INVALID_DATE: "La fecha de operación no puede estar en el futuro.",
+  INVALID_RECEIPT:
+    "El comprobante debe ser JPG, PNG o PDF, tener nombre y pesar como máximo 10 MB.",
+  RECEIPT_LIMIT:
+    "Este movimiento alcanzó el límite de comprobantes o de cargas pendientes. Espera a que venzan las cargas pendientes o revisa los adjuntos.",
+  RECEIPT_NOT_UPLOADED:
+    "El archivo todavía no aparece en el almacenamiento privado. Vuelve a intentarlo en unos segundos.",
 };
 export function publicError(error: { message: string; code?: string }): string {
   for (const [code, message] of Object.entries(messages))
