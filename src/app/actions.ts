@@ -19,6 +19,7 @@ import { validationState } from "@/lib/validation";
 import {
   loginSchema,
   passwordChangeSchema,
+  RECOVERY_EXPIRED_MESSAGE,
   RECOVERY_REQUEST_MESSAGE,
   recoverySchema,
 } from "@/lib/auth-schemas";
@@ -28,7 +29,10 @@ export type ActionState = {
   error?: string;
   success?: string;
   fieldErrors?: Record<string, string>;
+  /** Internal follow-up link shown with the error (set only by the server). */
+  link?: { href: string; label: string };
 };
+
 const uuid = z.uuid();
 const schemas = {
   company: z.object({
@@ -374,6 +378,13 @@ export async function changePassword(
 ): Promise<ActionState> {
   const { supabase, user } = await requireUser();
   const recovery = await inRecoveryMode(supabase);
+  // R-05: the form was rendered in recovery mode (no current-password field)
+  // but the 30-minute window expired before submitting.
+  if (!recovery && !form.has("currentPassword"))
+    return {
+      error: RECOVERY_EXPIRED_MESSAGE,
+      link: { href: "/login", label: "Solicitar un nuevo enlace" },
+    };
   const parsed = passwordChangeSchema(recovery).safeParse(
     Object.fromEntries(form),
   );

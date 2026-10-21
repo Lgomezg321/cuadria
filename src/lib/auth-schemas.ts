@@ -1,6 +1,9 @@
 import { z } from "zod";
 import "./validation";
 
+export const RECOVERY_EXPIRED_MESSAGE =
+  "El enlace de recuperación venció antes de guardar. Solicita uno nuevo desde la página de ingreso.";
+
 export const RECOVERY_REQUEST_MESSAGE =
   "Si el correo está registrado, recibirás instrucciones para recuperar tu acceso.";
 

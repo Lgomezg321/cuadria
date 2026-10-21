@@ -74,6 +74,16 @@ export function ActionForm({
             className="rounded-lg bg-red-50 p-3 text-sm text-red-800"
           >
             <p>{state.error}</p>
+            {state.link &&
+              state.link.href.startsWith("/") &&
+              !state.link.href.startsWith("//") && (
+                <a
+                  className="mt-2 inline-block underline"
+                  href={state.link.href}
+                >
+                  {state.link.label}
+                </a>
+              )}
             {state.stale && (
               <Button
                 type="button"

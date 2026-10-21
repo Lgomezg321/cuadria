@@ -41,6 +41,44 @@ describe("publicError", () => {
   });
 });
 
+describe("publicError compara códigos completos (R-04)", () => {
+  it("un código corto no captura uno más largo que lo contiene", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(publicError({ message: "INVALID_STATUS_TRANSITION" })).toBe(
+      "El estado actual del movimiento no admite ese cambio.",
+    );
+    expect(publicError({ message: "INVALID_STATUS" })).toBe(
+      "Selecciona un estado válido.",
+    );
+    expect(
+      publicError({ message: "ERROR: PERIOD_CLOSED (P0001)", code: "P0001" }),
+    ).toBe("La fecha pertenece a un período cerrado.");
+    expect(publicError({ message: "RECEIPT_SIGNATURE_INVALID" })).toMatch(
+      /verificación del comprobante/,
+    );
+    // Codes that are not exact tokens are not mapped.
+    expect(publicError({ message: "XFORBIDDEN_Y" })).toMatch(
+      /No fue posible guardar la operación/,
+    );
+    expect(warn).toHaveBeenCalledOnce();
+  });
+  it("conserva los fragmentos de PostgreSQL", () => {
+    expect(
+      publicError({
+        message:
+          'value for domain public.cop violates check constraint "cop_check"',
+        code: "23514",
+      }),
+    ).toMatch(/18 dígitos/);
+    expect(
+      publicError({
+        message: 'new row violates check constraint "x"',
+        code: "23514",
+      }),
+    ).toMatch(/reglas de validación/);
+  });
+});
+
 describe("errores de Auth", () => {
   it("traduce los errores de cambio de contraseña", () => {
     expect(passwordUpdateError({ code: "same_password" })).toMatch(/distinta/);

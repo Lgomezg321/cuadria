@@ -2,6 +2,7 @@
 import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 import { useActionFormState } from "@/components/action-form";
+import { watchTurnstileReady } from "@/lib/turnstile-ready";
 
 type TurnstileApi = {
   render: (
@@ -42,6 +43,16 @@ export function Turnstile({
   const form = useActionFormState();
   const result = form?.state;
 
+  // A second widget on the same page never gets onReady from next/script
+  // (the script is loaded once), so also watch for window.turnstile (R-03).
+  useEffect(() => {
+    if (ready) return;
+    return watchTurnstileReady(
+      () => !!window.turnstile,
+      () => setReady(true),
+    );
+  }, [ready]);
+
   useEffect(() => {
     const api = window.turnstile;
     if (!ready || !api || !container.current || widget.current) return;
@@ -74,6 +85,7 @@ export function Turnstile({
         strategy="afterInteractive"
         nonce={nonce}
         onReady={() => setReady(true)}
+        onLoad={() => setReady(true)}
       />
       <div ref={container} className="min-h-[65px]" />
     </>

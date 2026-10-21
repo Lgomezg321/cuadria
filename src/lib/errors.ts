@@ -52,6 +52,10 @@ const messages: Record<string, string> = {
     "Este movimiento alcanzó el límite de comprobantes o de cargas pendientes. Espera a que venzan las cargas pendientes o revisa los adjuntos.",
   RECEIPT_NOT_UPLOADED:
     "El archivo todavía no aparece en el almacenamiento privado. Vuelve a intentarlo en unos segundos.",
+  RECEIPT_SIGNATURE_INVALID:
+    "No fue posible confirmar la verificación del comprobante. Vuelve a intentarlo.",
+  RECEIPT_VERIFICATION_NOT_CONFIGURED:
+    "La verificación de comprobantes no está configurada. El archivo queda pendiente; avisa al administrador.",
   FUND_INACTIVE:
     "Uno de los fondos afectados está inactivo. Reactívalo antes de registrar la reversión.",
   HISTORICAL_OVERDRAFT:
@@ -70,9 +74,18 @@ const messages: Record<string, string> = {
   "violates check constraint":
     "Los datos no cumplen las reglas de validación. Revisa importes, fechas y textos.",
 };
+// Business codes raised by the RPCs (e.g. INVALID_STATUS_TRANSITION) are
+// matched as whole tokens, so a shorter code never captures a longer one
+// (INVALID_STATUS vs INVALID_STATUS_TRANSITION, R-04). Lower-case keys are
+// PostgreSQL fragments matched as substrings afterwards.
+const CODE_TOKEN = /\b[A-Z][A-Z0-9_]*[A-Z0-9]\b/g;
+const isCode = (key: string) => /^[A-Z][A-Z0-9_]*$/.test(key);
+const fragments = Object.entries(messages).filter(([key]) => !isCode(key));
 export function publicError(error: { message: string; code?: string }): string {
-  for (const [code, message] of Object.entries(messages))
-    if (error.message.includes(code)) return message;
+  for (const token of error.message.match(CODE_TOKEN) ?? [])
+    if (isCode(token) && Object.hasOwn(messages, token)) return messages[token];
+  for (const [fragment, message] of fragments)
+    if (error.message.includes(fragment)) return message;
   if (error.code === "23505") return "Ya existe un registro con estos datos.";
   if (error.code === "23503")
     return "El registro relacionado no existe o no pertenece a esta empresa.";
