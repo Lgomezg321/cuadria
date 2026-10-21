@@ -1,6 +1,6 @@
 # Aceptación con Supabase real
 
-Estado: **pendiente de ejecutar**. Esta guía no representa resultados de prueba. Ejecutar en `cuadria-dev`, con usuarios y documentos de prueba identificados, nunca con dinero ni facturas reales. Usar un administrador propietario, un empleado y un usuario sin membresía. Los datos de este documento son exclusivamente entradas de prueba y no se precargan en la aplicación.
+Estado: **pendiente de ejecutar**. Esta guía no representa resultados de prueba. Ejecutar en el proyecto de desarrollo `cuadria-dev` (todavía no existe: se crea según [OPERATIONS §1](OPERATIONS.md#1-separación-de-entornos-y-clave-administrativa-h-01); nunca en producción), con usuarios y documentos de prueba identificados, nunca con dinero ni facturas reales. Usar un administrador propietario, un empleado y un usuario sin membresía. Los datos de este documento son exclusivamente entradas de prueba y no se precargan en la aplicación.
 
 ## Circuito MVP de la especificación
 
@@ -40,6 +40,9 @@ El paso 6 ocurre durante el paso 4 en esta UI: la apertura es atómica con la cr
 7. Crear más de 200 asientos de prueba para comprobar paginación, ausencia de duplicados y enlaces históricos a auditoría. CSV debe indicar la página exportada; PDF debe mostrar el resumen completo legible.
 8. Revocar invitación y probar que no activa membresía. Correo sin verificar no puede aceptar. Invitar a un usuario que ya tiene membresía no debe escalar su rol ni reactivarla.
 9. Intentar desactivar fondo con saldo: rechazo. Fondo vacío puede desactivarse y no admite nuevos movimientos ordinarios.
+10. Comprobantes de 4,4 MB, 5 MB y 9,9 MB, y uno de más de 10 MiB, desde el navegador del empleado en la Preview de Vercel. Los tres primeros deben quedar guardados y legibles; el último, rechazado con un mensaje claro. La carga directa a Storage (H-07) solo se da por verificada cuando este caso pasa en el despliegue remoto.
+11. Pestaña abierta antes de un redespliegue: enviar un formulario después del despliegue. Debe funcionar o mostrar un aviso de recarga sin registrar la operación dos veces (H-08).
+12. Baja de un empleado de prueba según [OPERATIONS §9](OPERATIONS.md#9-baja-de-personal-h-37): pierde el acceso a la empresa y no puede iniciar sesión; su historial y sus movimientos siguen visibles para el administrador.
 
 ## Seguridad y recuperación
 
@@ -47,9 +50,9 @@ Comprobar mediante PostgREST/Storage con JWT de cada usuario: lectura entre empr
 
 Probar cierre de sesión, vencimiento/renovación de cookies, recuperación de contraseña, invitación expirada y callback alterado. Validar que claves administrativas no aparecen en JavaScript descargado, logs o reportes.
 
-Ejecutar concurrencia sobre PostgreSQL vacío desechable mediante `npm run test:concurrency`; no apuntarlo a Supabase con datos. Repetir escenarios de carrera mediante sesiones HTTP reales en desarrollo.
+Ejecutar concurrencia sobre PostgreSQL vacío desechable mediante `npm run test:concurrency` (con o sin Docker, ver [README](../README.md#concurrencia)); no apuntarlo a Supabase con datos. Repetir escenarios de carrera mediante sesiones HTTP reales en desarrollo.
 
-Ensayar restauración de base y objetos Storage en un entorno aislado. Registrar fecha, alcance, duración, conteos, saldos antes/después y responsable. Confirmar el plan de backup vigente en la cuenta; no afirmar recuperación probada solo porque existe una opción de backup.
+Ensayar restauración de base y objetos Storage en un entorno aislado según [OPERATIONS §8](OPERATIONS.md#8-backup-y-ensayo-de-restauración-h-02). Registrar fecha, alcance, duración, conteos, saldos antes/después y responsable. Confirmar el plan de backup vigente en la cuenta; no afirmar recuperación probada solo porque existe una opción de backup.
 
 ## Registro de resultados
 
