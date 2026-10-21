@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { appOrigin, supabaseConfig } from "@/lib/env";
 import { publicError } from "@/lib/errors";
+import { describeError, logServer } from "@/lib/log";
 import type { ActionState } from "@/app/actions";
 export async function inviteEmployee(
   _state: ActionState,
@@ -45,11 +46,11 @@ export async function inviteEmployee(
   );
   revalidatePath("/empresas");
   if (sendError) {
-    // Server-side record of the failed delivery, without personal data.
-    console.error("invitation_delivery_failed", {
+    // Server-side record of the failed delivery: invitation id plus the
+    // error name/code/status and a scrubbed message, never the e-mail.
+    logServer("error", "invitation.delivery_failed", {
       invitation: typeof invitation === "string" ? invitation : null,
-      status: sendError.status ?? null,
-      code: sendError.code ?? null,
+      ...describeError(sendError),
     });
     return {
       error:
@@ -64,9 +65,11 @@ export async function inviteEmployee(
 export async function acceptInvitations(): Promise<void> {
   const { supabase } = await requireUser();
   const { error } = await supabase.rpc("accept_invitations");
-  if (error)
+  if (error) {
+    logServer("warn", "invitation.accept_failed", describeError(error));
     throw new Error(
       "No fue posible aceptar las invitaciones. Verifica tu correo.",
     );
+  }
   revalidatePath("/", "layout");
 }
