@@ -233,6 +233,25 @@ describe("comprobantes verificados en PostgreSQL embebido", () => {
     }
   });
 
+  it("la clave de idempotencia y la solicitud no son legibles por la sesión", async () => {
+    const m = await post();
+    await reserve(m);
+    await fails(
+      () => db.query("select idempotency_key from public.receipts"),
+      "permission denied",
+    );
+    await fails(
+      () => db.query("select request_payload from public.receipts"),
+      "permission denied",
+    );
+    expect(
+      await scalar(
+        "select count(*)::text as value from public.receipts where movement_id=$1 and status='pending'",
+        [m],
+      ),
+    ).toBe("1");
+  });
+
   it("valida en la base nombre, MIME, tamaño y clave declarados", async () => {
     const m = await post();
     for (const args of [

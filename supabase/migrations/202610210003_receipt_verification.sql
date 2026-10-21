@@ -58,6 +58,10 @@ $$;
 create trigger receipt_transition before update or delete on public.receipts for each row execute function private.guard_receipt_transition();
 revoke all on function private.guard_receipt_transition() from public,anon,authenticated;
 
+-- Column-level read access: idempotency data stays private to the RPC.
+revoke select on public.receipts from authenticated;
+grant select(id,movement_id,uploaded_by,original_name,mime_type,size_bytes,object_path,created_at,status,status_reason,resolved_at) on public.receipts to authenticated;
+
 -- Other members only see verified receipts; the author also sees their own attempts.
 drop policy receipt_read on public.receipts;
 create policy receipt_read on public.receipts for select to authenticated using(
