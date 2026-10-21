@@ -268,6 +268,81 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
       ),
     ).toBe("employee");
   });
+  it("las invitaciones normalizan el correo y vencen", async () => {
+    await db.exec("reset role");
+    await db.query(
+      "update auth.users set email='nuevo@example.test',email_confirmed_at=now() where id=$1",
+      [outsider],
+    );
+    await user(owner);
+    const id = await scalar(
+      "select public.create_invitation($1,'  NuEvo@Example.TEST ','employee') as value",
+      [company],
+    );
+    expect(
+      await scalar(
+        "select email as value from public.invitations where id=$1",
+        [id],
+      ),
+    ).toBe("nuevo@example.test");
+    await db.exec("reset role");
+    await db.query(
+      "update public.invitations set expires_at=now()-interval '1 second' where id=$1",
+      [id],
+    );
+    await user(outsider);
+    expect(
+      await scalar<number>("select public.accept_invitations() as value"),
+    ).toBe(0);
+    await db.exec("reset role");
+    await db.query(
+      "update public.invitations set expires_at=now()+interval '1 day' where id=$1",
+      [id],
+    );
+    await user(outsider);
+    expect(
+      await scalar<number>("select public.accept_invitations() as value"),
+    ).toBe(1);
+  });
+  it("solo un administrador crea categorías en su empresa", async () => {
+    await user(owner);
+    const cat = await scalar(
+      "select public.create_category($1,'  Transporte ') as value",
+      [company],
+    );
+    expect(
+      await scalar("select name as value from public.categories where id=$1", [
+        cat,
+      ]),
+    ).toBe("Transporte");
+    for (const who of [employee, auditor, outsider]) {
+      await user(who);
+      await expectFailure(
+        db,
+        () => db.query("select public.create_category($1,'Ajena')", [company]),
+        "FORBIDDEN",
+      );
+    }
+  });
+  it("controls_snapshot respeta RLS y serializa dinero como texto", async () => {
+    const id = randomUUID();
+    await db.query(
+      "select public.save_draft($1,0,$2,null,null,'expense','250','Borrador',current_date)",
+      [id, fund],
+    );
+    type Controls = { drafts: { id: string; amount: unknown }[] };
+    const mine = await scalar<Controls>(
+      "select public.controls_snapshot() as value",
+    );
+    expect(mine.drafts).toEqual([
+      expect.objectContaining({ id, amount: "250" }),
+    ]);
+    await user(outsider);
+    expect(
+      (await scalar<Controls>("select public.controls_snapshot() as value"))
+        .drafts,
+    ).toEqual([]);
+  });
   it("no permite desactivar fondos con saldo", async () => {
     await user(owner);
     await expect(
