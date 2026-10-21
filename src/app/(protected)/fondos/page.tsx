@@ -78,6 +78,7 @@ export default async function Funds() {
           <section className="card">
             <h2 className="mb-6 font-semibold">Declarar saldo real</h2>
             <ActionForm operation="check" submit="Registrar verificación">
+              <input type="hidden" name="key" value={randomUUID()} />
               <Select name="fund" label="Fondo" options={writable} />
               <Field name="declared" label="Saldo real en COP" />
               <Field name="note" label="Observaciones" required={false} />

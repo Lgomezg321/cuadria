@@ -90,6 +90,12 @@ beforeAll(async () => {
       "utf8",
     ),
   );
+  await db.exec(
+    readFileSync(
+      "supabase/migrations/202610210002_financial_integrity.sql",
+      "utf8",
+    ),
+  );
   for (const id of [owner, employee, outsider, auditor])
     await db.query("insert into auth.users values($1)", [id]);
   await db.query("insert into public.installation_owners values($1)", [owner]);
@@ -140,7 +146,7 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
     const m = await post();
     await user(owner);
     await db.query(
-      "select public.review_movement($1,'observed','Falta descripción')",
+      "select public.review_movement($1,'observed','Falta descripción',gen_random_uuid())",
       [m],
     );
     await user(employee);
@@ -394,9 +400,10 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
   it("congela cierre con totales exactos y no afecta saldo", async () => {
     const m = await post();
     await user(owner);
-    await db.query("select public.review_movement($1,'approved','Revisado')", [
-      m,
-    ]);
+    await db.query(
+      "select public.review_movement($1,'approved','Revisado',gen_random_uuid())",
+      [m],
+    );
     const id = await scalar(
       "select public.close_period($1,current_date,'Cierre') as value",
       [fund],
@@ -429,14 +436,18 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
   it("impide cambiar una revisión incluida en un cierre", async () => {
     const m = await post();
     await user(owner);
-    await db.query("select public.review_movement($1,'approved','Revisado')", [
-      m,
-    ]);
+    await db.query(
+      "select public.review_movement($1,'approved','Revisado',gen_random_uuid())",
+      [m],
+    );
     await db.query("select public.close_period($1,current_date,'Cierre')", [
       fund,
     ]);
     await expect(
-      db.query("select public.review_movement($1,'observed','Cambiar')", [m]),
+      db.query(
+        "select public.review_movement($1,'observed','Cambiar',gen_random_uuid())",
+        [m],
+      ),
     ).rejects.toThrow("PERIOD_CLOSED");
   });
   it("un cierre no admite modificaciones silenciosas", async () => {
@@ -456,13 +467,14 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
   });
   it("aprobar arqueo conserva diferencia y no cambia dinero", async () => {
     const id = await scalar(
-      "select public.record_check($1,'900','Faltante') as value",
+      "select public.record_check($1,'900','Faltante',gen_random_uuid()) as value",
       [fund],
     );
     await user(owner);
-    await db.query("select public.review_check($1,'approved','Revisado')", [
-      id,
-    ]);
+    await db.query(
+      "select public.review_check($1,'approved','Revisado',gen_random_uuid())",
+      [id],
+    );
     expect(await balance()).toBe("1000");
     expect(
       await scalar(
@@ -471,7 +483,10 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
       ),
     ).toBe("-100");
     await expect(
-      db.query("select public.review_check($1,'observed','Cambiar')", [id]),
+      db.query(
+        "select public.review_check($1,'observed','Cambiar',gen_random_uuid())",
+        [id],
+      ),
     ).rejects.toThrow("CHECK_ALREADY_APPROVED");
   });
 
@@ -545,7 +560,10 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
   it("impide adjuntar después de aprobación", async () => {
     const m = await post();
     await user(owner);
-    await db.query("select public.review_movement($1,'approved','')", [m]);
+    await db.query(
+      "select public.review_movement($1,'approved','',gen_random_uuid())",
+      [m],
+    );
     await user(employee);
     await expect(
       db.query(
@@ -601,9 +619,10 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
   it("aprobar no vuelve a contabilizar dinero", async () => {
     const m = await post();
     await user(owner);
-    await db.query("select public.review_movement($1,'approved','Revisado')", [
-      m,
-    ]);
+    await db.query(
+      "select public.review_movement($1,'approved','Revisado',gen_random_uuid())",
+      [m],
+    );
     expect(await balance()).toBe("800");
     expect(
       await scalar(
@@ -616,13 +635,19 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
     await user(owner);
     const m = await post();
     await expect(
-      db.query("select public.review_movement($1,'approved','')", [m]),
+      db.query(
+        "select public.review_movement($1,'approved','',gen_random_uuid())",
+        [m],
+      ),
     ).rejects.toThrow("FORBIDDEN");
   });
   it("empleado no puede revisar", async () => {
     const m = await post();
     await expect(
-      db.query("select public.review_movement($1,'approved','')", [m]),
+      db.query(
+        "select public.review_movement($1,'approved','',gen_random_uuid())",
+        [m],
+      ),
     ).rejects.toThrow("FORBIDDEN");
   });
   it("reversión compensatoria conserva el original y es idempotente", async () => {
@@ -682,11 +707,10 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
     expect(await balance(destination)).toBe("100");
   });
   it("el arqueo captura el saldo sin modificarlo", async () => {
-    const c = await scalar("select public.record_check($1,$2,$3) as value", [
-      fund,
-      "990",
-      "Faltante",
-    ]);
+    const c = await scalar(
+      "select public.record_check($1,$2,$3,gen_random_uuid()) as value",
+      [fund, "990", "Faltante"],
+    );
     await post();
     expect(await balance()).toBe("800");
     const r = await db.query<{ theoretical: string; difference: string }>(
@@ -696,11 +720,10 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
     expect(r.rows[0]).toEqual({ theoretical: "1000", difference: "-10" });
   });
   it("distingue conciliación bancaria de arqueo", async () => {
-    const c = await scalar("select public.record_check($1,$2,$3) as value", [
-      destination,
-      "110",
-      "Extracto",
-    ]);
+    const c = await scalar(
+      "select public.record_check($1,$2,$3,gen_random_uuid()) as value",
+      [destination, "110", "Extracto"],
+    );
     expect(
       await scalar("select kind as value from public.checks where id=$1", [c]),
     ).toBe("bank_reconciliation");

@@ -35,11 +35,13 @@ const schemas = {
     fund: uuid,
     declared: moneySchema,
     note: z.string().max(2000),
+    key: uuid,
   }),
   review: z.object({
     movement: uuid,
     decision: z.enum(["approved", "observed"]),
     comment: z.string().max(2000),
+    key: uuid,
   }),
   reversal: z.object({
     movement: uuid,
@@ -130,6 +132,7 @@ export async function mutate(
             check: uuid,
             decision: z.enum(["approved", "observed"]),
             comment: z.string().max(2000),
+            key: uuid,
           })
           .parse(raw);
         name = "review_check";
@@ -137,6 +140,7 @@ export async function mutate(
           p_check: v.check,
           p_decision: v.decision,
           p_comment: v.comment,
+          p_key: v.key,
         };
         break;
       }
@@ -200,7 +204,12 @@ export async function mutate(
       case "check": {
         const v = schemas.check.parse(raw);
         name = "record_check";
-        args = { p_fund: v.fund, p_declared: v.declared, p_note: v.note };
+        args = {
+          p_fund: v.fund,
+          p_declared: v.declared,
+          p_note: v.note,
+          p_key: v.key,
+        };
         break;
       }
       case "review": {
@@ -210,6 +219,7 @@ export async function mutate(
           p_movement: v.movement,
           p_decision: v.decision,
           p_comment: v.comment,
+          p_key: v.key,
         };
         break;
       }

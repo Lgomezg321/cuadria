@@ -41,7 +41,7 @@ export default async function Audit({
     admin &&
     m.created_by !== user.id &&
     m.financial_status === "posted" &&
-    !["opening", "reversal"].includes(m.kind) &&
+    m.kind !== "opening" &&
     !closed;
   const checks = data.checks.filter(
     (c) =>
@@ -139,6 +139,7 @@ export default async function Audit({
                 <div className="mt-7">
                   <ActionForm operation="review" submit="Guardar revisión">
                     <input type="hidden" name="movement" value={m.id} />
+                    <input type="hidden" name="key" value={randomUUID()} />
                     <Select
                       name="decision"
                       label="Decisión"
@@ -271,6 +272,7 @@ export default async function Audit({
               operation="checkReview"
               submit="Guardar revisión de saldo"
             >
+              <input type="hidden" name="key" value={randomUUID()} />
               <Select
                 name="check"
                 label="Declaración"
