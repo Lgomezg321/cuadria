@@ -24,6 +24,23 @@ const messages: Record<string, string> = {
   INVALID_REVIEW: "La revisión no es válida para este movimiento.",
   INVALID_DESTINATION: "Selecciona otro fondo autorizado de la misma empresa.",
   INVALID_DATE: "La fecha de operación no puede estar en el futuro.",
+  FUND_INACTIVE:
+    "Uno de los fondos afectados está inactivo. Reactívalo antes de registrar la reversión.",
+  HISTORICAL_OVERDRAFT:
+    "Con esa fecha el fondo quedaría con saldo negativo en algún día posterior. Usa una fecha más reciente o registra antes los ingresos que lo cubren.",
+  DATE_BEFORE_FUND_OPENING:
+    "La fecha de operación es anterior a la apertura del fondo.",
+  NEGATIVE_CLOSING_BALANCE:
+    "El saldo del período sería negativo. Corrige los movimientos antes de cerrarlo.",
+  REVIEW_REASON_REQUIRED:
+    "Indica el motivo para observar un movimiento que ya estaba aprobado.",
+  INVALID_STATUS_TRANSITION:
+    "El estado actual del movimiento no admite ese cambio.",
+  INVALID_REQUEST: "La solicitud está incompleta. Recarga el formulario.",
+  cop_check:
+    "El importe o el saldo resultante supera el máximo permitido (18 dígitos en COP).",
+  "violates check constraint":
+    "Los datos no cumplen las reglas de validación. Revisa importes, fechas y textos.",
 };
 export function publicError(error: { message: string; code?: string }): string {
   for (const [code, message] of Object.entries(messages))

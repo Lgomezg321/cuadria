@@ -5,6 +5,7 @@ import { Field } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
 import { getSnapshot } from "@/lib/data";
 import { getReport } from "@/lib/reports";
+import { detailRange } from "@/lib/domain/reports";
 import { bogotaDate, formatCOP } from "@/lib/domain/money";
 export default async function Reports({
   searchParams,
@@ -143,8 +144,12 @@ export default async function Reports({
       <div className="mt-8 overflow-x-auto rounded-xl border bg-white">
         <table className="w-full">
           <caption>
-            Detalle de asientos · {report.entries.length} de{" "}
-            {report.total_entries}
+            Detalle de asientos ·{" "}
+            {detailRange(
+              report.offset,
+              report.entries.length,
+              report.total_entries,
+            )}
           </caption>
           <thead>
             <tr>
@@ -153,6 +158,7 @@ export default async function Reports({
               <th>Concepto</th>
               <th>Tipo</th>
               <th>Valor neto</th>
+              <th>Estado</th>
               <th>Revisión</th>
             </tr>
           </thead>
@@ -171,6 +177,11 @@ export default async function Reports({
                 </td>
                 <td>{kindLabels[e.kind]}</td>
                 <td>{formatCOP(e.signed_amount)}</td>
+                <td>
+                  {e.financial_status === "reversed"
+                    ? "Reversado"
+                    : "Contabilizado"}
+                </td>
                 <td>{reviewLabels[e.review_status]}</td>
               </tr>
             ))}
@@ -197,7 +208,9 @@ export default async function Reports({
       </div>
       <p className="mt-5 text-xs text-stone-500">
         El CSV incluye los totales completos y la página de detalle actual
-        (hasta 200 asientos). El PDF contiene el resumen completo por fondo.
+        (hasta 200 asientos); los importes de más de 15 dígitos se exportan como
+        texto para conservar todos los dígitos en hojas de cálculo. El PDF
+        contiene el resumen completo por fondo.
       </p>
     </>
   );

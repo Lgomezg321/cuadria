@@ -59,11 +59,40 @@ export function csvText(value: string): string {
   const safe = /^[\s]*[=+\-@]/.test(value) ? "'" + value : value;
   return '"' + safe.replaceAll('"', '""') + '"';
 }
+// Spreadsheets store numbers as IEEE doubles: integers beyond 15 significant
+// digits lose precision when opened in Excel. Those amounts are exported as a
+// text cell that starts with "COP " (not a number, not a formula trigger), so
+// every digit survives; smaller amounts stay numeric for sums.
+export const CSV_EXACT_DIGITS = 15;
+export function csvAmount(value: string): string {
+  if (!/^-?(0|[1-9][0-9]*)$/.test(value))
+    throw new Error("Importe inválido en el reporte.");
+  const digits = value.replace("-", "").length;
+  return digits <= CSV_EXACT_DIGITS ? value : '"COP ' + value + '"';
+}
+export function detailRange(
+  offset: number,
+  shown: number,
+  total: number,
+): string {
+  if (shown === 0)
+    return total === 0
+      ? "Sin asientos en el período con los filtros aplicados"
+      : `Sin asientos en esta página (desde la posición ${offset + 1}); ${total} en total`;
+  return `Detalle ${offset + 1} a ${offset + shown} de ${total}`;
+}
+const financialLabels: Record<string, string> = {
+  posted: "Contabilizado",
+  reversed: "Reversado",
+};
 export function reportCSV(report: FinancialReport): string {
   const rows = [
     ["CUADRIA · Reporte de fondos", report.from, report.to]
       .map(csvText)
       .join(","),
+    csvText(
+      `Importes en COP. Los valores de más de ${CSV_EXACT_DIGITS} dígitos se exportan como texto "COP <valor>" para que la hoja de cálculo no pierda precisión.`,
+    ),
     [
       "Empresa",
       "Fondo",
@@ -83,18 +112,20 @@ export function reportCSV(report: FinancialReport): string {
       [
         csvText(f.company_name),
         csvText(f.name),
-        f.opening_balance,
-        f.opening_funding,
-        f.income,
-        f.expenses,
-        f.transfers_net,
-        f.reversals_net,
-        f.closing_balance,
+        csvAmount(f.opening_balance),
+        csvAmount(f.opening_funding),
+        csvAmount(f.income),
+        csvAmount(f.expenses),
+        csvAmount(f.transfers_net),
+        csvAmount(f.reversals_net),
+        csvAmount(f.closing_balance),
       ].join(","),
     );
   rows.push(
     "",
-    `Detalle ${report.offset + 1} a ${report.offset + report.entries.length} de ${report.total_entries}; totales del período completo`,
+    csvText(
+      `${detailRange(report.offset, report.entries.length, report.total_entries)}; totales del período completo`,
+    ),
     [
       "Fecha",
       "Empresa",
@@ -102,6 +133,7 @@ export function reportCSV(report: FinancialReport): string {
       "Tipo",
       "Concepto",
       "Valor neto COP",
+      "Estado financiero",
       "Revisión",
       "Movimiento",
     ]
@@ -116,7 +148,8 @@ export function reportCSV(report: FinancialReport): string {
         csvText(e.fund_name),
         csvText(e.kind),
         csvText(e.concept),
-        e.signed_amount,
+        csvAmount(e.signed_amount),
+        csvText(financialLabels[e.financial_status] ?? e.financial_status),
         csvText(e.review_status),
         csvText(e.movement_id),
       ].join(","),
