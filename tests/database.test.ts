@@ -1,5 +1,4 @@
-import { PGlite } from "@electric-sql/pglite";
-import { readFileSync } from "node:fs";
+import type { PGlite } from "@electric-sql/pglite";
 import { randomUUID } from "node:crypto";
 import {
   beforeAll,
@@ -10,6 +9,14 @@ import {
   it,
   expect,
 } from "vitest";
+import {
+  actAs,
+  asSuperuser,
+  createTestDatabase,
+  createUsers,
+  expectFailure,
+  queryValue,
+} from "./helpers/db";
 let db: PGlite;
 const owner = "00000000-0000-4000-8000-000000000001";
 const employee = "00000000-0000-4000-8000-000000000002";
@@ -20,18 +27,9 @@ let company: string,
   fund: string,
   destination: string,
   foreignFund: string;
-async function user(id: string) {
-  await db.exec("reset role");
-  await db.query("select set_config('request.jwt.claim.sub',$1,true)", [id]);
-  await db.exec("set local role authenticated");
-}
-async function scalar<T = string>(
-  sql: string,
-  args: unknown[] = [],
-): Promise<T> {
-  const r = await db.query<{ value: T }>(sql, args);
-  return r.rows[0].value;
-}
+const user = (id: string) => actAs(db, id);
+const scalar = <T = string>(sql: string, args: unknown[] = []) =>
+  queryValue<T>(db, sql, args);
 async function post(
   kind = "expense",
   amount = "200",
@@ -50,59 +48,11 @@ async function balance(f = fund) {
   ]);
 }
 beforeAll(async () => {
-  db = new PGlite();
-  await db.exec(
-    // auth.uid()/auth.role()/auth.jwt() mirror Supabase: legacy claim GUCs first, then request.jwt.claims (current PostgREST).
-    `create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);
-    create function auth.uid() returns uuid language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claim.sub',true),''),(nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub'))::uuid $$;
-    create function auth.role() returns text language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claim.role',true),''),(nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'role'))::text $$;
-    create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claim',true),''),nullif(current_setting('request.jwt.claims',true),''))::jsonb $$;
-    grant usage on schema auth to anon,authenticated;grant execute on function auth.uid(),auth.role(),auth.jwt() to anon,authenticated;set timezone='America/Bogota';`,
+  db = await createTestDatabase();
+  await createUsers(
+    db,
+    [owner, employee, outsider, auditor].map((id) => ({ id })),
   );
-  await db.exec(
-    readFileSync("supabase/migrations/202610190001_core.sql", "utf8"),
-  );
-  await db.exec(
-    `create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;grant usage on schema storage to authenticated;grant select,insert,update,delete on storage.objects to authenticated;`,
-  );
-  await db.exec(
-    readFileSync("supabase/migrations/202610190002_receipts.sql", "utf8"),
-  );
-  await db.exec(
-    readFileSync(
-      "supabase/migrations/202610190003_drafts_closures.sql",
-      "utf8",
-    ),
-  );
-  await db.exec(
-    readFileSync("supabase/migrations/202610190004_reports.sql", "utf8"),
-  );
-  await db.exec(
-    "alter table auth.users add column email text;alter table auth.users add column email_confirmed_at timestamptz;",
-  );
-  await db.exec(
-    readFileSync("supabase/migrations/202610190005_administration.sql", "utf8"),
-  );
-  await db.exec(
-    readFileSync(
-      "supabase/migrations/202610190006_audit_conversation.sql",
-      "utf8",
-    ),
-  );
-  await db.exec(
-    readFileSync(
-      "supabase/migrations/202610200001_private_requests_rls.sql",
-      "utf8",
-    ),
-  );
-  await db.exec(
-    readFileSync(
-      "supabase/migrations/202610210002_financial_integrity.sql",
-      "utf8",
-    ),
-  );
-  for (const id of [owner, employee, outsider, auditor])
-    await db.query("insert into auth.users values($1)", [id]);
   await db.query("insert into public.installation_owners values($1)", [owner]);
   await db.exec("begin");
   await user(owner);
@@ -112,14 +62,19 @@ beforeAll(async () => {
   otherCompany = await scalar(
     "select public.create_company('Empresa Dos','900654321') as value",
   );
-  await db.query("select public.assign_member($1,$2,'employee')", [
-    company,
-    employee,
-  ]);
-  await db.query("select public.assign_member($1,$2,'auditor')", [
-    company,
-    auditor,
-  ]);
+  // Since 202610210001 members only join through accepted invitations
+  // (assign_member changes roles of existing members). Seed them directly.
+  await asSuperuser(db);
+  for (const [id, role] of [
+    [employee, "employee"],
+    [auditor, "auditor"],
+  ])
+    await db.query("insert into public.memberships values($1,$2,$3,true)", [
+      company,
+      id,
+      role,
+    ]);
+  await user(owner);
   fund = await scalar(
     "select public.create_fund($1,'Caja Uno','cash','1000',$2) as value",
     [company, randomUUID()],
@@ -293,12 +248,19 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
       [employee],
     );
     await user(owner);
-    await db.query(
-      "select public.create_invitation($1,'empleado@example.test','admin')",
-      [company],
+    await expectFailure(
+      db,
+      () =>
+        db.query(
+          "select public.create_invitation($1,'empleado@example.test','admin')",
+          [company],
+        ),
+      "MEMBERSHIP_EXISTS",
     );
     await user(employee);
-    await db.query("select public.accept_invitations()");
+    expect(
+      await scalar<number>("select public.accept_invitations() as value"),
+    ).toBe(0);
     expect(
       await scalar(
         "select role as value from public.memberships where user_id=$1 and company_id=$2",
@@ -316,12 +278,60 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
     await post();
     const a = await scalar<{
       pending: number;
+      pending_reversals: number;
       missing_receipts: number;
       unverified_funds: number;
     }>("select public.alerts_snapshot() as value");
     expect(a.pending).toBe(1);
+    expect(a.pending_reversals).toBe(0);
     expect(a.missing_receipts).toBe(1);
     expect(a.unverified_funds).toBe(2);
+  });
+  it("las alertas cuentan las reversiones pendientes de revisión independiente", async () => {
+    const m = await post();
+    await user(owner);
+    await db.query(
+      "select public.review_movement($1,'approved','Revisado',gen_random_uuid())",
+      [m],
+    );
+    const r = await scalar(
+      "select public.reverse_movement($1,'Factura duplicada',gen_random_uuid()) as value",
+      [m],
+    );
+    type Alerts = { pending: number; pending_reversals: number };
+    const before = await scalar<Alerts>(
+      "select public.alerts_snapshot() as value",
+    );
+    expect(before).toMatchObject({ pending: 0, pending_reversals: 1 });
+    // The reversal blocks the closure until another admin approves it.
+    await expectFailure(
+      db,
+      () =>
+        db.query("select public.close_period($1,current_date,'Cierre')", [
+          fund,
+        ]),
+      "UNREVIEWED_MOVEMENTS",
+    );
+    await expectFailure(
+      db,
+      () =>
+        db.query(
+          "select public.review_movement($1,'approved','Propia',gen_random_uuid())",
+          [r],
+        ),
+      "FORBIDDEN",
+    );
+    // An auditor sees the same alert (RLS, explicit movement columns).
+    await user(auditor);
+    expect(
+      (await scalar<Alerts>("select public.alerts_snapshot() as value"))
+        .pending_reversals,
+    ).toBe(1);
+    await user(outsider);
+    expect(
+      (await scalar<Alerts>("select public.alerts_snapshot() as value"))
+        .pending_reversals,
+    ).toBe(0);
   });
 
   it("el reporte consolida transferencias sin convertirlas en ingresos", async () => {
@@ -516,16 +526,30 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
       ),
     ).toBe("0");
   });
-  it("comprobante privado: propietario adjunta, administrador lee, ajeno no accede", async () => {
+  it("comprobante privado: el autor adjunta y verifica, el administrador lee, el ajeno no accede", async () => {
     const m = await post();
-    const path = await scalar(
-      "select public.reserve_receipt($1,'factura.pdf','application/pdf',100) as value",
+    const r = await scalar<{ id: string; path: string }>(
+      "select public.reserve_receipt($1,'factura.pdf','application/pdf',100,gen_random_uuid()) as value",
       [m],
     );
     await db.query(
-      "insert into storage.objects(bucket_id,name) values('receipts',$1)",
-      [path],
+      "insert into storage.objects(bucket_id,name,owner_id,metadata) values('receipts',$1,auth.uid()::text,$2)",
+      [r.path, JSON.stringify({ size: 100, mimetype: "application/pdf" })],
     );
+    await user(owner);
+    // Not verified yet: only the author can read the object.
+    expect(
+      await scalar("select count(*)::text as value from storage.objects"),
+    ).toBe("0");
+    await user(employee);
+    expect(
+      (
+        await scalar<{ status: string }>(
+          "select public.confirm_receipt($1,'application/pdf',100) as value",
+          [r.id],
+        )
+      ).status,
+    ).toBe("verified");
     await user(owner);
     expect(
       await scalar("select count(*)::text as value from storage.objects"),
@@ -540,19 +564,22 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
   });
   it("impide sobrescribir y eliminar comprobantes", async () => {
     const m = await post();
-    const path = await scalar(
-      "select public.reserve_receipt($1,'factura.pdf','application/pdf',100) as value",
+    const r = await scalar<{ id: string; path: string }>(
+      "select public.reserve_receipt($1,'factura.pdf','application/pdf',100,gen_random_uuid()) as value",
       [m],
     );
     await db.query(
-      "insert into storage.objects(bucket_id,name) values('receipts',$1)",
-      [path],
+      "insert into storage.objects(bucket_id,name,owner_id,metadata) values('receipts',$1,auth.uid()::text,$2)",
+      [r.path, JSON.stringify({ size: 100, mimetype: "application/pdf" })],
     );
+    await db.query("select public.confirm_receipt($1,'application/pdf',100)", [
+      r.id,
+    ]);
     await db.exec(
       "update storage.objects set name='reemplazo';delete from storage.objects;",
     );
     expect(await scalar("select name as value from storage.objects")).toBe(
-      path,
+      r.path,
     );
   });
   it("impide subir un comprobante fuera de la ruta reservada", async () => {
@@ -572,7 +599,7 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
     await user(employee);
     await expect(
       db.query(
-        "select public.reserve_receipt($1,'factura.pdf','application/pdf',100)",
+        "select public.reserve_receipt($1,'factura.pdf','application/pdf',100,gen_random_uuid())",
         [m],
       ),
     ).rejects.toThrow("FORBIDDEN");

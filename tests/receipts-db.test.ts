@@ -1,10 +1,10 @@
 // Receipt reservations, verification and storage policies in embedded PostgreSQL.
-// Bootstrap duplicated from tests/database.test.ts, with a storage.objects
-// substitute that also carries owner/owner_id/metadata like Supabase Storage.
+// Shared bootstrap (tests/helpers/db.ts): every migration, with a storage.objects
+// substitute that carries owner/owner_id/metadata like Supabase Storage. Legacy
+// reservations are seeded right before 202610210003_receipt_verification.sql.
 // It does not replace a test against real Supabase Storage (signed upload
 // tokens, bucket limits, metadata written by the Storage server).
-import { PGlite } from "@electric-sql/pglite";
-import { readFileSync } from "node:fs";
+import type { PGlite } from "@electric-sql/pglite";
 import { randomUUID } from "node:crypto";
 import {
   beforeAll,
@@ -15,6 +15,14 @@ import {
   it,
   expect,
 } from "vitest";
+import {
+  actAs,
+  asSuperuser,
+  createTestDatabase,
+  createUsers,
+  expectFailure,
+  queryValue,
+} from "./helpers/db";
 
 let db: PGlite;
 const owner = "00000000-0000-4000-8000-000000000001";
@@ -28,30 +36,14 @@ const legacy: Record<"match" | "missing" | "mismatch", string> = {
   missing: "",
   mismatch: "",
 };
-const migration = (name: string) =>
-  readFileSync(`supabase/migrations/${name}`, "utf8");
 
-async function user(id: string) {
-  await db.exec("reset role");
-  await db.query("select set_config('request.jwt.claim.sub',$1,true)", [id]);
-  await db.exec("set local role authenticated");
-}
+const user = (id: string) => actAs(db, id);
 // A failed statement aborts the transaction: isolate expected failures.
-async function fails(run: () => Promise<unknown>, message?: string) {
-  await db.exec("savepoint expected_failure");
-  await expect(run()).rejects.toThrow(message);
-  await db.exec("rollback to savepoint expected_failure");
-}
-async function superuser() {
-  await db.exec("reset role");
-}
-async function scalar<T = string>(
-  sql: string,
-  args: unknown[] = [],
-): Promise<T> {
-  const r = await db.query<{ value: T }>(sql, args);
-  return r.rows[0].value;
-}
+const fails = (run: () => Promise<unknown>, message?: string) =>
+  expectFailure(db, run, message);
+const superuser = () => asSuperuser(db);
+const scalar = <T = string>(sql: string, args: unknown[] = []) =>
+  queryValue<T>(db, sql, args);
 async function post(kind = "expense", amount = "200") {
   return scalar(
     "select public.post_movement($1,null,null,$2,$3,'Operación con comprobante',current_date,$4) as value",
@@ -114,26 +106,14 @@ async function status(id: string) {
   return value;
 }
 
-beforeAll(async () => {
-  db = new PGlite();
-  await db.exec(
-    `create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;set timezone='America/Bogota';`,
+// Data created with the previous flow (4-argument reserve_receipt, no status),
+// seeded on the schema that precedes the verification migration.
+async function seedLegacy(target: PGlite) {
+  db = target;
+  await createUsers(
+    db,
+    [owner, employee, outsider, auditor, colleague].map((id) => ({ id })),
   );
-  await db.exec(migration("202610190001_core.sql"));
-  await db.exec(
-    `create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text,owner uuid,owner_id text,metadata jsonb,created_at timestamptz default now(),unique(bucket_id,name));alter table storage.objects enable row level security;grant usage on schema storage to authenticated;grant select,insert,update,delete on storage.objects to authenticated;`,
-  );
-  await db.exec(migration("202610190002_receipts.sql"));
-  await db.exec(migration("202610190003_drafts_closures.sql"));
-  await db.exec(migration("202610190004_reports.sql"));
-  await db.exec(
-    "alter table auth.users add column email text;alter table auth.users add column email_confirmed_at timestamptz;",
-  );
-  await db.exec(migration("202610190005_administration.sql"));
-  await db.exec(migration("202610190006_audit_conversation.sql"));
-  await db.exec(migration("202610200001_private_requests_rls.sql"));
-  for (const id of [owner, employee, outsider, auditor, colleague])
-    await db.query("insert into auth.users(id) values($1)", [id]);
   await db.query("insert into public.installation_owners values($1)", [owner]);
   await db.exec("begin");
   await user(owner);
@@ -143,23 +123,25 @@ beforeAll(async () => {
   await scalar(
     "select public.create_company('Empresa Dos','900654321') as value",
   );
+  // Members join through invitations since 202610210001; seed them directly.
+  await superuser();
   for (const [id, role] of [
     [employee, "employee"],
     [colleague, "employee"],
     [auditor, "auditor"],
   ])
-    await db.query("select public.assign_member($1,$2,$3)", [
+    await db.query("insert into public.memberships values($1,$2,$3,true)", [
       company,
       id,
       role,
     ]);
+  await user(owner);
   fund = await scalar(
     "select public.create_fund($1,'Caja Uno','cash','100000',$2) as value",
     [company, randomUUID()],
   );
   for (const id of [employee, colleague])
     await db.query("select public.assign_fund($1,$2)", [fund, id]);
-  // Reservations made with the previous flow, before the verification migration.
   await user(employee);
   const old = await post();
   for (const kind of ["match", "missing", "mismatch"] as const) {
@@ -184,7 +166,12 @@ beforeAll(async () => {
       );
   }
   await db.exec("reset role;commit");
-  await db.exec(migration("202610210003_receipt_verification.sql"));
+}
+
+beforeAll(async () => {
+  db = await createTestDatabase({
+    beforeMigration: { "202610210003_receipt_verification.sql": seedLegacy },
+  });
 });
 beforeEach(async () => {
   await db.exec("begin");
@@ -503,7 +490,10 @@ describe("comprobantes verificados en PostgreSQL embebido", () => {
     await user(outsider);
     await fails(() => reserve(m), "FORBIDDEN");
     await user(owner);
-    await db.query("select public.review_movement($1,'approved','')", [m]);
+    await db.query(
+      "select public.review_movement($1,'approved','',gen_random_uuid())",
+      [m],
+    );
     await user(employee);
     await fails(() => reserve(m), "FORBIDDEN");
     await fails(() => upload(r.path), "row-level security");

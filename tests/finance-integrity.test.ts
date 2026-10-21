@@ -2,8 +2,7 @@
 // (H-05, H-06, H-23 to H-30, H-48, H-49). Every scenario reproduces the audited
 // failure and asserts the corrected behavior; afterEach checks that every fund
 // balance still equals the sum of its ledger entries.
-import { PGlite } from "@electric-sql/pglite";
-import { readFileSync, readdirSync } from "node:fs";
+import type { PGlite } from "@electric-sql/pglite";
 import { randomUUID } from "node:crypto";
 import {
   afterAll,
@@ -14,6 +13,15 @@ import {
   expect,
   it,
 } from "vitest";
+import {
+  actAs,
+  asSuperuser,
+  createTestDatabase,
+  createUsers,
+  expectFailure,
+  ledgerDrift,
+  queryValue,
+} from "./helpers/db";
 
 let db: PGlite;
 const owner = "00000000-0000-4000-8000-0000000000a1";
@@ -22,30 +30,13 @@ const employee = "00000000-0000-4000-8000-0000000000e1";
 const auditor = "00000000-0000-4000-8000-0000000000d1";
 let company: string;
 
-async function user(id: string) {
-  await db.exec("reset role");
-  await db.query("select set_config('request.jwt.claim.sub',$1,true)", [id]);
-  await db.exec("set local role authenticated");
-}
-async function superuser() {
-  await db.exec("reset role");
-}
-async function scalar<T = string>(
-  sql: string,
-  args: unknown[] = [],
-): Promise<T> {
-  const r = await db.query<{ value: T }>(sql, args);
-  return r.rows[0].value;
-}
+const user = (id: string) => actAs(db, id);
+const superuser = () => asSuperuser(db);
+const scalar = <T = string>(sql: string, args: unknown[] = []) =>
+  queryValue<T>(db, sql, args);
 // Expected failures run inside a savepoint so the test transaction stays usable.
-async function fails(sql: string, args: unknown[], code: string | RegExp) {
-  await db.exec("savepoint expected_failure");
-  try {
-    await expect(db.query(sql, args)).rejects.toThrow(code);
-  } finally {
-    await db.exec("rollback to savepoint expected_failure");
-  }
-}
+const fails = (sql: string, args: unknown[], code: string | RegExp) =>
+  expectFailure(db, () => db.query(sql, args), code);
 async function fund(
   name: string,
   { daysAgo = 0, opening = "0", kind = "cash" } = {},
@@ -166,35 +157,13 @@ function equation(t: Totals) {
 }
 
 beforeAll(async () => {
-  db = new PGlite();
-  // Minimal Supabase substitutes, including its default privileges so the
-  // revokes in the migrations are exercised. Never apply these to Supabase.
-  await db.exec(
-    `create role anon;create role authenticated;create role service_role;
-    create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);
-    create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
-    grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;
-    create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
-    create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);
-    alter table storage.objects enable row level security;grant usage on schema storage to authenticated;
-    grant select,insert,update,delete on storage.objects to authenticated;
-    alter default privileges in schema public grant all on tables to anon,authenticated,service_role;
-    alter default privileges in schema public grant all on functions to anon,authenticated,service_role;
-    set timezone='America/Bogota';`,
+  // Shared bootstrap: every migration on Supabase substitutes that include its
+  // default privileges, so the revokes in the migrations are exercised.
+  db = await createTestDatabase();
+  await createUsers(
+    db,
+    [owner, admin2, employee, auditor].map((id) => ({ id })),
   );
-  for (const file of readdirSync("supabase/migrations")
-    .filter((f) => f.endsWith(".sql"))
-    .sort())
-    await db.exec(readFileSync(`supabase/migrations/${file}`, "utf8"));
-  // Column-level SELECT on movements (request_payload and idempotency_key
-  // hidden), as hardened by the membership-security migration: the
-  // security-invoker report must keep working under it.
-  await db.exec(
-    `revoke select on public.movements from authenticated;
-    grant select (id,company_id,fund_id,destination_id,category_id,kind,amount,concept,operation_date,created_by,created_at,posted_at,financial_status,review_status,reversal_of) on public.movements to authenticated;`,
-  );
-  for (const id of [owner, admin2, employee, auditor])
-    await db.query("insert into auth.users(id) values($1)", [id]);
   // Memberships are inserted directly: these tests do not depend on the
   // membership RPCs, which are hardened separately.
   company = await scalar(
@@ -218,10 +187,7 @@ beforeEach(async () => {
 afterEach(async () => {
   try {
     await superuser();
-    const drift = await db.query(
-      "select f.id from public.funds f left join public.entries e on e.fund_id=f.id group by f.id having f.balance<>coalesce(sum(e.amount),0)",
-    );
-    expect(drift.rows).toEqual([]);
+    expect(await ledgerDrift(db)).toEqual([]);
     const closures = await db.query(
       "select id from public.period_closures where opening_balance+income-expenses+transfers_net+reversals_net<>closing_balance",
     );
@@ -442,7 +408,15 @@ describe("H-23 a H-26 · reversiones y revisiones", () => {
       [r, randomUUID()],
       "FORBIDDEN",
     );
+    const pendingReversals = async () =>
+      (
+        await scalar<{ pending_reversals: number }>(
+          "select public.alerts_snapshot() as value",
+        )
+      ).pending_reversals;
+    expect(await pendingReversals()).toBe(1);
     await review(r, "approved", admin2);
+    expect(await pendingReversals()).toBe(0);
     await user(owner);
     const closure = await scalar(
       "select public.close_period($1,current_date,'Cierre') as value",

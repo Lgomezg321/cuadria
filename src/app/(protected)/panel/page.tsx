@@ -50,22 +50,38 @@ export default async function Dashboard() {
         <section className="card mb-8">
           <h2 className="mb-5 font-semibold">Requieren atención</h2>
           <div className="grid gap-4 sm:grid-cols-3">
-            {[
-              ["Movimientos pendientes", alerts.pending],
-              ["Movimientos observados", alerts.observed],
-              ["Egresos sin comprobante cargado", alerts.missing_receipts],
+            {(
               [
-                "Fondos con diferencia en última declaración",
-                alerts.funds_with_difference,
-              ],
-              ["Sin verificación aprobada en 7 días", alerts.unverified_funds],
-            ].map(([label, value]) => (
-              <div key={String(label)}>
-                <p className="text-xs text-stone-500">{label}</p>
-                <p className="mt-2 text-2xl font-semibold">{String(value)}</p>
-              </div>
-            ))}
+                ["Movimientos pendientes de revisión", alerts.pending],
+                // Older databases (before 202610210004) do not report it.
+                [
+                  "Reversiones pendientes de revisión",
+                  alerts.pending_reversals,
+                ],
+                ["Movimientos observados", alerts.observed],
+                ["Egresos sin comprobante verificado", alerts.missing_receipts],
+                [
+                  "Fondos con diferencia en última declaración",
+                  alerts.funds_with_difference,
+                ],
+                [
+                  "Sin verificación aprobada en 7 días",
+                  alerts.unverified_funds,
+                ],
+              ] as [string, unknown][]
+            )
+              .filter(([, value]) => value !== undefined && value !== null)
+              .map(([label, value]) => (
+                <div key={label}>
+                  <p className="text-xs text-stone-500">{label}</p>
+                  <p className="mt-2 text-2xl font-semibold">{String(value)}</p>
+                </div>
+              ))}
           </div>
+          <p className="mt-5 text-xs text-stone-500">
+            Solo cuentan los comprobantes verificados. Las reversiones necesitan
+            la aprobación de otro administrador antes de cerrar el período.
+          </p>
         </section>
       )}
       {alertError && (

@@ -1,5 +1,4 @@
-import { PGlite } from "@electric-sql/pglite";
-import { readFileSync, readdirSync } from "node:fs";
+import type { PGlite } from "@electric-sql/pglite";
 import { randomUUID } from "node:crypto";
 import {
   beforeAll,
@@ -10,10 +9,19 @@ import {
   it,
   expect,
 } from "vitest";
+import {
+  actAs,
+  asSuperuser,
+  createTestDatabase,
+  createUsers,
+  expectFailure,
+  queryValue,
+  queryValues,
+} from "./helpers/db";
 
-// Arranque propio (duplicado de database.test.ts) que además emula los privilegios por
-// defecto de Supabase: todo objeto nuevo en public se concede a anon, authenticated y
-// service_role salvo que las migraciones lo revoquen.
+// Arranque compartido (tests/helpers/db.ts): todas las migraciones sobre sustitutos de
+// Supabase que emulan sus privilegios por defecto (todo objeto nuevo en public se concede
+// a anon, authenticated y service_role salvo que las migraciones lo revoquen).
 let db: PGlite;
 const ids = {
   owner: "00000000-0000-4000-8000-000000000101",
@@ -32,38 +40,15 @@ type Person = keyof typeof ids;
 const email = (p: Person) => `${p.toLowerCase()}@example.test`;
 let company: string, otherCompany: string, legacyCompany: string, fund: string;
 
-async function as(p: Person | null) {
-  await db.exec("reset role");
-  await db.query("select set_config('request.jwt.claim.sub',$1,true)", [
-    p ? ids[p] : "",
-  ]);
-  await db.exec(`set local role ${p ? "authenticated" : "anon"}`);
-}
-async function scalar<T = string>(
-  sql: string,
-  args: unknown[] = [],
-): Promise<T> {
-  const r = await db.query<{ value: T }>(sql, args);
-  return r.rows[0].value;
-}
-async function list(sql: string, args: unknown[] = []): Promise<string[]> {
-  const r = await db.query<{ value: string }>(sql, args);
-  return r.rows.map((row) => row.value);
-}
+const as = (p: Person | null) => actAs(db, p ? ids[p] : null);
+const scalar = <T = string>(sql: string, args: unknown[] = []) =>
+  queryValue<T>(db, sql, args);
+const list = (sql: string, args: unknown[] = []) => queryValues(db, sql, args);
 // Ejecuta una sentencia que debe fallar sin abortar la transacción de la prueba.
-async function rejects(sql: string, args: unknown[], message: string) {
-  await db.exec("savepoint attempt");
-  try {
-    await expect(db.query(sql, args)).rejects.toThrow(message);
-  } finally {
-    await db.exec("rollback to savepoint attempt");
-  }
-}
+const rejects = (sql: string, args: unknown[], message: string) =>
+  expectFailure(db, () => db.query(sql, args), message);
 async function superuser<T>(fn: () => Promise<T>, actor?: Person) {
-  await db.exec("reset role");
-  await db.query("select set_config('request.jwt.claim.sub',$1,true)", [
-    actor ? ids[actor] : "",
-  ]);
+  await asSuperuser(db, actor ? ids[actor] : null);
   return fn();
 }
 async function invite(c: string, who: Person, role: string, by: Person) {
@@ -102,34 +87,14 @@ async function post(who: Person, amount = "10") {
 }
 
 beforeAll(async () => {
-  db = new PGlite();
-  await db.exec(
-    `create role anon;create role authenticated;create role service_role;
-     alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-     alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
-     alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
-     grant usage on schema public to anon, authenticated, service_role;
-     create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);
-     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
-     grant usage on schema auth to anon, authenticated;grant execute on function auth.uid() to anon, authenticated;
-     set timezone='America/Bogota';`,
+  db = await createTestDatabase();
+  await createUsers(
+    db,
+    (Object.keys(ids) as Person[]).map((p) => ({
+      id: ids[p],
+      email: email(p),
+    })),
   );
-  const dir = "supabase/migrations/";
-  const files = readdirSync(dir)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
-  for (const file of files) {
-    await db.exec(readFileSync(dir + file, "utf8"));
-    if (file.includes("0001_core"))
-      await db.exec(
-        `create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;grant usage on schema storage to authenticated;grant select,insert,update,delete on storage.objects to authenticated;`,
-      );
-  }
-  for (const p of Object.keys(ids) as Person[])
-    await db.query(
-      "insert into auth.users(id,email,email_confirmed_at) values($1,$2,now())",
-      [ids[p], email(p)],
-    );
   await db.query("insert into public.installation_owners values($1),($2)", [
     ids.owner,
     ids.owner2,
