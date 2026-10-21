@@ -1,3 +1,4 @@
+import { describeError, logServer } from "./log";
 const messages: Record<string, string> = {
   INVITATION_RATE_LIMIT:
     "Espera un minuto antes de volver a invitar al mismo correo.",
@@ -31,5 +32,37 @@ export function publicError(error: { message: string; code?: string }): string {
   if (error.code === "23505") return "Ya existe un registro con estos datos.";
   if (error.code === "23503")
     return "El registro relacionado no existe o no pertenece a esta empresa.";
+  logServer("warn", "rpc.unmapped_error", describeError(error));
   return "No fue posible guardar la operación. Revisa los datos y vuelve a intentarlo.";
+}
+
+export const CAPTCHA_REQUIRED_MESSAGE =
+  "Completa la verificación de seguridad antes de continuar.";
+export const CAPTCHA_FAILED_MESSAGE =
+  "No pudimos validar la verificación de seguridad. Inténtalo de nuevo.";
+export const RATE_LIMIT_MESSAGE =
+  "Demasiados intentos en poco tiempo. Espera unos minutos y vuelve a intentarlo.";
+export const AUTH_UNAVAILABLE_MESSAGE =
+  "El servicio de autenticación no respondió. Es un fallo temporal: vuelve a intentarlo en unos minutos.";
+
+/** Spanish message for Supabase Auth errors raised while changing a password. */
+export function passwordUpdateError(error: {
+  code?: string;
+  status?: number;
+}): string {
+  switch (error.code) {
+    case "same_password":
+      return "La nueva contraseña debe ser distinta de la actual.";
+    case "weak_password":
+      return "La contraseña no cumple la política de seguridad: usa al menos 12 caracteres y evita contraseñas comunes o filtradas.";
+    case "reauthentication_needed":
+    case "reauthentication_not_valid":
+      return "Por seguridad debes confirmar tu identidad de nuevo. Cierra sesión, vuelve a ingresar e inténtalo otra vez.";
+    case "over_request_rate_limit":
+      return RATE_LIMIT_MESSAGE;
+    case "captcha_failed":
+      return CAPTCHA_FAILED_MESSAGE;
+  }
+  if (error.status === 429) return RATE_LIMIT_MESSAGE;
+  return "No fue posible actualizar tu contraseña. Inténtalo de nuevo.";
 }

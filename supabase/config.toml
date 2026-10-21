@@ -15,12 +15,51 @@ enabled = true
 enabled = false
 [auth]
 enabled = true
+# Local development values. In the hosted project, Site URL must be the exact
+# NEXT_PUBLIC_APP_URL and the redirect allow-list must contain
+# <NEXT_PUBLIC_APP_URL>/auth/callback (the app then moves to /auth/confirm).
 site_url = "http://localhost:3000"
 additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+# Security requirement: invitation acceptance assumes public sign-up is off,
+# e-mail confirmation is mandatory and no OAuth/SSO provider is enabled.
 enable_signup = false
+enable_anonymous_sign_ins = false
+enable_manual_linking = false
+# Same rule as the application (12 characters), enforced by Auth itself.
+minimum_password_length = 12
+
+# Auth rate limits (per IP; requests from Vercel functions may share IPs, so
+# keep them moderate and add CAPTCHA + a Vercel Firewall rule for POST /login).
+[auth.rate_limit]
+# E-mails (invitations, recoveries) per hour for the whole project.
+email_sent = 10
+# Per 5 minutes per IP.
+token_refresh = 150
+sign_in_sign_ups = 30
+token_verifications = 30
+
+# Optional Cloudflare Turnstile. Disabled by default: enable it only together
+# with NEXT_PUBLIC_TURNSTILE_SITE_KEY in the app (otherwise every login fails).
+# The secret is read from the environment and is never stored in Git.
+[auth.captcha]
+enabled = false
+provider = "turnstile"
+secret = "env(SUPABASE_AUTH_CAPTCHA_SECRET)"
+
 [auth.email]
 enable_signup = false
 enable_confirmations = true
+# Password changes from sessions older than 24 h require reauthentication.
+secure_password_change = true
+double_confirm_changes = true
+max_frequency = "60s"
+otp_expiry = 3600
+
+# Recommended (paid plans): bound session lifetime on the server.
+# [auth.sessions]
+# timebox = "24h"
+# inactivity_timeout = "8h"
+
 [storage]
 enabled = true
 file_size_limit = "10MiB"
