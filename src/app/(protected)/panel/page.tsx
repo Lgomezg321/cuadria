@@ -52,12 +52,12 @@ export default async function Dashboard() {
           <div className="grid gap-4 sm:grid-cols-3">
             {(
               [
-                ["Movimientos pendientes de revisión", alerts.pending],
-                // Older databases (before 202610210004) do not report it.
                 [
-                  "Reversiones pendientes de revisión",
-                  alerts.pending_reversals,
+                  "Pendientes de revisión (incluye reversiones)",
+                  alerts.pending,
                 ],
+                // Older databases (before 202610210004) do not report it.
+                ["De ellas, reversiones", alerts.pending_reversals],
                 ["Movimientos observados", alerts.observed],
                 ["Egresos sin comprobante verificado", alerts.missing_receipts],
                 [
@@ -80,7 +80,9 @@ export default async function Dashboard() {
           </div>
           <p className="mt-5 text-xs text-stone-500">
             Solo cuentan los comprobantes verificados. Las reversiones necesitan
-            la aprobación de otro administrador antes de cerrar el período.
+            la aprobación de otro administrador antes de cerrar el período (con
+            un solo administrador, invita a un segundo: es el control de cuatro
+            ojos).
           </p>
         </section>
       )}

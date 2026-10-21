@@ -65,3 +65,19 @@ export function hstsEnabled(env: Env = process.env): boolean {
 export function turnstileSiteKey(): string | null {
   return process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() || null;
 }
+
+export const MIN_RECEIPT_SECRET_LENGTH = 32;
+
+/**
+ * Server-only secret that signs receipt verdicts (R-01); the same value lives
+ * in Supabase Vault as 'cuadria_receipt_verification'. Missing or shorter
+ * than 32 characters means "not configured": receipts cannot be verified
+ * (fail closed). It must never use the NEXT_PUBLIC_ prefix.
+ */
+export function receiptVerificationSecret(
+  env: Env = process.env,
+): string | null {
+  const value = env.RECEIPT_VERIFICATION_SECRET?.trim();
+  if (!value || value.length < MIN_RECEIPT_SECRET_LENGTH) return null;
+  return value;
+}

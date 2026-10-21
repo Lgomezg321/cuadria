@@ -16,6 +16,7 @@ import {
   createUsers,
   expectFailure,
   queryValue,
+  signVerdict,
 } from "./helpers/db";
 let db: PGlite;
 const owner = "00000000-0000-4000-8000-000000000001";
@@ -377,7 +378,7 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
     const before = await scalar<Alerts>(
       "select public.alerts_snapshot() as value",
     );
-    expect(before).toMatchObject({ pending: 0, pending_reversals: 1 });
+    expect(before).toMatchObject({ pending: 1, pending_reversals: 1 });
     // The reversal blocks the closure until another admin approves it.
     await expectFailure(
       db,
@@ -620,8 +621,8 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
     expect(
       (
         await scalar<{ status: string }>(
-          "select public.confirm_receipt($1,'application/pdf',100) as value",
-          [r.id],
+          "select public.confirm_receipt($1,'application/pdf',100,$2) as value",
+          [r.id, signVerdict(r.id, "application/pdf", 100, employee)],
         )
       ).status,
     ).toBe("verified");
@@ -647,9 +648,10 @@ describe("motor financiero ejecutado en PostgreSQL embebido", () => {
       "insert into storage.objects(bucket_id,name,owner_id,metadata) values('receipts',$1,auth.uid()::text,$2)",
       [r.path, JSON.stringify({ size: 100, mimetype: "application/pdf" })],
     );
-    await db.query("select public.confirm_receipt($1,'application/pdf',100)", [
-      r.id,
-    ]);
+    await db.query(
+      "select public.confirm_receipt($1,'application/pdf',100,$2)",
+      [r.id, signVerdict(r.id, "application/pdf", 100, employee)],
+    );
     await db.exec(
       "update storage.objects set name='reemplazo';delete from storage.objects;",
     );

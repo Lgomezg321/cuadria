@@ -43,6 +43,7 @@ const { inviteEmployee, acceptInvitations } =
   await import("@/app/invitation-actions");
 const { reserveReceiptUpload, confirmReceiptUpload } =
   await import("@/app/receipt-actions");
+const { signReceiptVerdict } = await import("@/lib/receipt-signature");
 
 const noSession = () =>
   vi.mocked(requireUser).mockRejectedValue(new RedirectSignal("/login"));
@@ -460,6 +461,21 @@ describe("confirmReceiptUpload", () => {
   const stored = (bytes: Uint8Array<ArrayBuffer>) => ({
     download: async () => ({ data: new Blob([bytes]), error: null }),
   });
+  const secret = "s".repeat(40);
+  beforeEach(() => vi.stubEnv("RECEIPT_VERIFICATION_SECRET", secret));
+  it("R-01: sin secreto de verificación no descarga ni confirma (falla cerrado)", async () => {
+    for (const value of ["", "corto"]) {
+      vi.stubEnv("RECEIPT_VERIFICATION_SECRET", value);
+      const mock = signedIn({ row: row() });
+      expect(await confirmReceiptUpload(ids.movement)).toEqual({
+        error:
+          "La verificación de comprobantes no está configurada en el servidor. El archivo queda pendiente; avisa al administrador.",
+      });
+      expect(mock.bucket.download).not.toHaveBeenCalled();
+      expect(mock.rpc).not.toHaveBeenCalled();
+    }
+    expect(console.error).toHaveBeenCalledTimes(2);
+  });
   it("un identificador inválido no consulta nada", async () => {
     const mock = signedIn();
     expect(await confirmReceiptUpload("../../etc")).toEqual({
@@ -487,10 +503,18 @@ describe("confirmReceiptUpload", () => {
       success: "Comprobante verificado y guardado en almacenamiento privado.",
     });
     expect(mock.filters).toContainEqual(["id", ids.movement]);
+    const signature = signReceiptVerdict(secret, {
+      receipt: ids.movement,
+      detectedMime: "application/pdf",
+      size: pdf.length,
+      user: sessionUser.id,
+    });
+    expect(signature).toMatch(/^[0-9a-f]{64}$/);
     expect(mock.rpc).toHaveBeenCalledWith("confirm_receipt", {
       p_receipt: ids.movement,
       p_detected_mime: "application/pdf",
       p_size: pdf.length,
+      p_signature: signature,
     });
   });
   it("contenido que no coincide se confirma como rechazo y se descarta el objeto", async () => {
@@ -503,10 +527,18 @@ describe("confirmReceiptUpload", () => {
     expect(await confirmReceiptUpload(ids.movement)).toEqual({
       error: "El archivo debe ser una imagen JPG, PNG o un PDF válido.",
     });
-    expect(mock.rpc).toHaveBeenCalledWith(
-      "confirm_receipt",
-      expect.objectContaining({ p_detected_mime: null }),
-    );
+    // The signed verdict carries the inspection result (no MIME detected).
+    expect(mock.rpc).toHaveBeenCalledWith("confirm_receipt", {
+      p_receipt: ids.movement,
+      p_detected_mime: null,
+      p_size: html.length,
+      p_signature: signReceiptVerdict(secret, {
+        receipt: ids.movement,
+        detectedMime: null,
+        size: html.length,
+        user: sessionUser.id,
+      }),
+    });
     expect(mock.bucket.remove).toHaveBeenCalledWith(["c/m/r"]);
   });
   it("si el archivo aún no está, pide reintentar sin confirmar", async () => {
@@ -527,6 +559,42 @@ describe("confirmReceiptUpload", () => {
       expect(mock.bucket.download).not.toHaveBeenCalled();
       expect(mock.rpc).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe("changePassword (R-05)", () => {
+  it("si la ventana de recuperación venció avisa con enlace y no toca Auth", async () => {
+    signedIn();
+    vi.mocked(inRecoveryMode).mockResolvedValueOnce(false);
+    const result = await changePassword(
+      {},
+      formData({
+        password: "una-clave-larga-1",
+        confirmPassword: "una-clave-larga-1",
+      }),
+    );
+    expect(result).toEqual({
+      error:
+        "El enlace de recuperación venció antes de guardar. Solicita uno nuevo desde la página de ingreso.",
+      link: { href: "/login", label: "Solicitar un nuevo enlace" },
+    });
+    expect(createEphemeralClient).not.toHaveBeenCalled();
+  });
+  it("en una sesión normal sigue exigiendo la contraseña actual", async () => {
+    signedIn();
+    vi.mocked(inRecoveryMode).mockResolvedValueOnce(false);
+    const result = await changePassword(
+      {},
+      formData({
+        currentPassword: "",
+        password: "una-clave-larga-1",
+        confirmPassword: "una-clave-larga-1",
+      }),
+    );
+    expect(result.fieldErrors?.currentPassword).toBe(
+      "Ingresa tu contraseña actual.",
+    );
+    expect(createEphemeralClient).not.toHaveBeenCalled();
   });
 });
 

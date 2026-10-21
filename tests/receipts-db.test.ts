@@ -22,6 +22,7 @@ import {
   createUsers,
   expectFailure,
   queryValue,
+  signVerdict,
 } from "./helpers/db";
 
 let db: PGlite;
@@ -37,7 +38,11 @@ const legacy: Record<"match" | "missing" | "mismatch", string> = {
   mismatch: "",
 };
 
-const user = (id: string) => actAs(db, id);
+let current = "";
+const user = (id: string) => {
+  current = id;
+  return actAs(db, id);
+};
 // A failed statement aborts the transaction: isolate expected failures.
 const fails = (run: () => Promise<unknown>, message?: string) =>
   expectFailure(db, run, message);
@@ -85,9 +90,10 @@ async function confirm(
   mime: string | null = "application/pdf",
   size = 100,
 ) {
+  // Signed like the Server Action, for the session user (see R-01).
   return scalar<{ status: string; reason: string | null }>(
-    "select public.confirm_receipt($1,$2,$3) as value",
-    [id, mime, size],
+    "select public.confirm_receipt($1,$2,$3,$4) as value",
+    [id, mime, size, signVerdict(id, mime, size, current)],
   );
 }
 async function missingReceipts() {
@@ -203,7 +209,7 @@ describe("comprobantes verificados en PostgreSQL embebido", () => {
     ).toBe("reserve_receipt(uuid,text,text,integer,uuid)");
     for (const fn of [
       "public.reserve_receipt(uuid,text,text,integer,uuid)",
-      "public.confirm_receipt(uuid,text,bigint)",
+      "public.confirm_receipt(uuid,text,bigint,text)",
     ]) {
       expect(
         await scalar<boolean>(
@@ -376,6 +382,83 @@ describe("comprobantes verificados en PostgreSQL embebido", () => {
         [r.path],
       ),
     ).toBe("0");
+  });
+
+  it("R-01: confirm_receipt exige el veredicto firmado por el servidor", async () => {
+    const m = await post();
+    const r = await reserve(m);
+    await upload(r.path);
+    const call = (args: unknown[]) =>
+      db.query("select public.confirm_receipt($1,$2,$3,$4)", args);
+    const pdf = "application/pdf";
+    const good = signVerdict(r.id, pdf, 100, employee);
+    // Absent, malformed or forged signatures: no state change at all.
+    for (const signature of [
+      null,
+      "",
+      "x".repeat(64),
+      good.toUpperCase(),
+      good.slice(0, 63) + (good.endsWith("0") ? "1" : "0"),
+      // Signed for other content, receipt, size or user.
+      signVerdict(r.id, null, 100, employee),
+      signVerdict(r.id, "image/png", 100, employee),
+      signVerdict(r.id, pdf, 101, employee),
+      signVerdict(randomUUID(), pdf, 100, employee),
+      signVerdict(r.id, pdf, 100, colleague),
+      signVerdict(
+        r.id,
+        pdf,
+        100,
+        employee,
+        "otro-secreto-de-al-menos-32-caracteres",
+      ),
+    ])
+      await fails(
+        () => call([r.id, pdf, 100, signature]),
+        "RECEIPT_SIGNATURE_INVALID",
+      );
+    // The previous three-argument signature no longer exists.
+    await fails(
+      () =>
+        db.query("select public.confirm_receipt($1,$2,$3)", [r.id, pdf, 100]),
+      "does not exist",
+    );
+    expect(await status(r.id)).toBe("pending");
+    await user(employee);
+    // A verdict signed for invalid content (null MIME) cannot verify a file.
+    expect(await confirm(r.id, null)).toMatchObject({
+      status: "rejected",
+      reason: "content",
+    });
+  });
+
+  it("R-01: sin secreto en Vault falla cerrado", async () => {
+    const m = await post();
+    const r = await reserve(m);
+    await upload(r.path);
+    await superuser();
+    await db.query(
+      "delete from vault.decrypted_secrets where name='cuadria_receipt_verification'",
+    );
+    await user(employee);
+    await fails(() => confirm(r.id), "RECEIPT_VERIFICATION_NOT_CONFIGURED");
+    await superuser();
+    await db.query(
+      "insert into vault.decrypted_secrets(name,decrypted_secret) values('cuadria_receipt_verification','corto')",
+    );
+    await user(employee);
+    await fails(() => confirm(r.id), "RECEIPT_VERIFICATION_NOT_CONFIGURED");
+    expect(await status(r.id)).toBe("pending");
+    // The verdict helper is not callable by clients.
+    await user(employee);
+    await fails(
+      () =>
+        db.query(
+          "select private.receipt_verdict_valid($1,'application/pdf',100,'00')",
+          [r.id],
+        ),
+      "permission denied",
+    );
   });
 
   it("rechaza contenido, tamaño, metadatos o propietario que no coinciden", async () => {

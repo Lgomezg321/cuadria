@@ -3,8 +3,34 @@ import {
   appOrigin,
   hstsEnabled,
   isDeployedEnvironment,
+  receiptVerificationSecret,
   secureCookies,
 } from "../src/lib/env";
+
+describe("receiptVerificationSecret (R-01)", () => {
+  it("exige al menos 32 caracteres y nunca cae a un valor por defecto", () => {
+    expect(receiptVerificationSecret({})).toBeNull();
+    expect(
+      receiptVerificationSecret({ RECEIPT_VERIFICATION_SECRET: "  " }),
+    ).toBeNull();
+    expect(
+      receiptVerificationSecret({
+        RECEIPT_VERIFICATION_SECRET: "a".repeat(31),
+      }),
+    ).toBeNull();
+    expect(
+      receiptVerificationSecret({
+        RECEIPT_VERIFICATION_SECRET: ` ${"b".repeat(32)} `,
+      }),
+    ).toBe("b".repeat(32));
+    // A public variable with the same purpose is ignored.
+    expect(
+      receiptVerificationSecret({
+        NEXT_PUBLIC_RECEIPT_VERIFICATION_SECRET: "c".repeat(40),
+      }),
+    ).toBeNull();
+  });
+});
 
 describe("appOrigin", () => {
   it("usa localhost solo fuera de Vercel Preview/Production", () => {

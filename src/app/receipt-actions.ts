@@ -6,6 +6,9 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { publicError } from "@/lib/errors";
+import { receiptVerificationSecret } from "@/lib/env";
+import { logServer } from "@/lib/log";
+import { signReceiptVerdict } from "@/lib/receipt-signature";
 import {
   inspectReceipt,
   receiptProblemMessages,
@@ -52,6 +55,8 @@ const confirmation = z.object({
 // Signing is only allowed during the first hour of a reservation (see
 // private.can_upload_receipt); leave a margin for clock skew.
 const SIGNING_WINDOW_MS = 55 * 60 * 1000;
+const NOT_CONFIGURED =
+  "La verificación de comprobantes no está configurada en el servidor. El archivo queda pendiente; avisa al administrador.";
 const UNAVAILABLE =
   "No fue posible preparar la carga. El movimiento sigue registrado; vuelve a intentarlo.";
 
@@ -142,6 +147,14 @@ export async function confirmReceiptUpload(
     return {
       error: "La reserva venció. Vuelve a cargar el comprobante.",
     };
+  // Fail closed: without the signing secret the verdict cannot be signed and
+  // confirm_receipt would reject it (R-01).
+  const secret = receiptVerificationSecret();
+  if (!secret) {
+    logServer("error", "receipt.verification_not_configured");
+    return { error: NOT_CONFIGURED };
+  }
+  const signer = { secret, user: user.id };
   // Read the stored object with the user's session (author-only read policy
   // for unverified receipts) and check the real bytes.
   const { data: blob, error: downloadError } = await supabase.storage
@@ -154,7 +167,7 @@ export async function confirmReceiptUpload(
       retry: true,
     };
   if (blob.size > MAX_RECEIPT_SIZE)
-    return finish(supabase, row, null, blob.size, "too_large");
+    return finish(supabase, signer, row, null, blob.size, "too_large");
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const inspection = inspectReceipt(bytes, {
     mime: row.mime_type,
@@ -162,6 +175,7 @@ export async function confirmReceiptUpload(
   });
   return finish(
     supabase,
+    signer,
     row,
     inspection.ok ? inspection.mime : null,
     bytes.length,
@@ -172,15 +186,24 @@ export async function confirmReceiptUpload(
 type Session = Awaited<ReturnType<typeof requireUser>>["supabase"];
 async function finish(
   supabase: Session,
+  signer: { secret: string; user: string },
   row: { id: string; object_path: string },
   detected: ReceiptMime | null,
   size: number,
   problem: keyof typeof receiptProblemMessages | null,
 ): Promise<ConfirmReceiptResult> {
+  // The database only accepts a verdict signed by this server (R-01).
+  const signature = signReceiptVerdict(signer.secret, {
+    receipt: row.id,
+    detectedMime: detected,
+    size,
+    user: signer.user,
+  });
   const { data, error } = await supabase.rpc("confirm_receipt", {
     p_receipt: row.id,
     p_detected_mime: detected,
     p_size: size,
+    p_signature: signature,
   });
   if (error) {
     if (error.message.includes("RECEIPT_NOT_UPLOADED"))

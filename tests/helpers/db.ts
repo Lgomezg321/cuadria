@@ -10,15 +10,34 @@
 //     auth.role() and auth.jwt() reading the legacy request.jwt.claim.* GUCs
 //     first and then the request.jwt.claims JSON set by current PostgREST;
 //   * storage.buckets and storage.objects with owner/owner_id/metadata and the
-//     unique (bucket_id, name) index, plus the storage.foldername helpers.
+//     unique (bucket_id, name) index, plus the storage.foldername helpers;
+//   * pgcrypto in schema `extensions` (as in Supabase) and a table standing in
+//     for the vault.decrypted_secrets view, holding TEST_RECEIPT_SECRET under
+//     the name 'cuadria_receipt_verification'.
 // They never replace a run against `supabase start` (real GoTrue, PostgREST,
 // Storage server, signed upload tokens or bucket limits). Never apply this SQL
 // to a Supabase project.
 import { PGlite } from "@electric-sql/pglite";
+import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { expect } from "vitest";
+import { signReceiptVerdict } from "../../src/lib/receipt-signature";
 
 export const MIGRATIONS_DIR = "supabase/migrations";
+/** Test-only value of the Vault secret 'cuadria_receipt_verification'. */
+export const TEST_RECEIPT_SECRET =
+  "test-only-receipt-verification-secret-0123456789";
+
+const VAULT_AND_PGCRYPTO = `
+create schema extensions;
+create extension pgcrypto with schema extensions;
+create schema vault;
+create table vault.decrypted_secrets(
+ id uuid primary key default gen_random_uuid(), name text unique, description text default '',
+ decrypted_secret text, created_at timestamptz default now()
+);
+insert into vault.decrypted_secrets(name,decrypted_secret) values('cuadria_receipt_verification','${TEST_RECEIPT_SECRET}');
+`;
 
 const SUPABASE_SUBSTITUTES = `
 create role anon nologin;
@@ -98,8 +117,9 @@ export async function createTestDatabase(
   for (const name of Object.keys(hooks))
     if (!files.includes(name))
       throw new Error(`Unknown migration in beforeMigration: ${name}`);
-  const db = new PGlite();
+  const db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(SUPABASE_SUBSTITUTES);
+  await db.exec(VAULT_AND_PGCRYPTO);
   for (const file of files) {
     await hooks[file]?.(db);
     await db.exec(readFileSync(`${MIGRATIONS_DIR}/${file}`, "utf8"));
@@ -184,4 +204,18 @@ export async function ledgerDrift(db: PGlite): Promise<string[]> {
     db,
     "select f.id::text as value from public.funds f left join public.entries e on e.fund_id=f.id group by f.id having f.balance<>coalesce(sum(e.amount),0)",
   );
+}
+
+/**
+ * Signed verdict expected by confirm_receipt, computed with the application's
+ * own signer and the test secret (cross-checks the SQL message format).
+ */
+export function signVerdict(
+  receipt: string,
+  detectedMime: string | null,
+  size: number,
+  user: string,
+  secret = TEST_RECEIPT_SECRET,
+): string {
+  return signReceiptVerdict(secret, { receipt, detectedMime, size, user });
 }
