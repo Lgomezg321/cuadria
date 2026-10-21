@@ -4,8 +4,8 @@ import { Select, kindLabels, reviewLabels } from "@/components/business";
 import { Field } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
 import { getSnapshot } from "@/lib/data";
-import { getReport } from "@/lib/reports";
-import { detailRange } from "@/lib/domain/reports";
+import { loadReport } from "@/lib/reports";
+import { detailRange, type FinancialReport } from "@/lib/domain/reports";
 import { bogotaDate, formatCOP } from "@/lib/domain/money";
 export default async function Reports({
   searchParams,
@@ -23,15 +23,14 @@ export default async function Reports({
     to: raw.to || today,
   };
   const data = await getSnapshot();
-  const report = await getReport(filters);
+  // Invalid filters come back as a message for this page, not as an exception.
+  const result = await loadReport(filters);
   const query = new URLSearchParams(
     Object.entries(filters).filter(([, v]) => v !== undefined) as [
       string,
       string,
     ][],
   );
-  const nextQuery = new URLSearchParams(query);
-  nextQuery.set("offset", String(report.offset + 200));
   return (
     <>
       <PageHeader
@@ -103,6 +102,31 @@ export default async function Reports({
         </div>
         <Button type="submit">Consultar</Button>
       </form>
+      {result.ok ? (
+        <ReportBody report={result.report} query={query} />
+      ) : (
+        <p
+          role="alert"
+          className="card border-red-200 text-sm leading-6 text-red-800"
+        >
+          {result.error}
+        </p>
+      )}
+    </>
+  );
+}
+
+function ReportBody({
+  report,
+  query,
+}: {
+  report: FinancialReport;
+  query: URLSearchParams;
+}) {
+  const nextQuery = new URLSearchParams(query);
+  nextQuery.set("offset", String(report.offset + 200));
+  return (
+    <>
       <div className="mb-6 flex flex-wrap gap-3">
         <Button asChild variant="outline">
           <a href={"/reportes/csv?" + query}>Exportar CSV</a>

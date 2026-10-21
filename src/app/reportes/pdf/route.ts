@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { getReport } from "@/lib/reports";
+import { loadReport, reportErrorResponse } from "@/lib/reports";
 import { formatCOP } from "@/lib/domain/money";
 export async function GET(request: NextRequest) {
-  const report = await getReport(
+  // loadReport authenticates before reading the filters.
+  const result = await loadReport(
     Object.fromEntries(request.nextUrl.searchParams),
   );
+  if (!result.ok) return reportErrorResponse(result);
+  const { report } = result;
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   let page = doc.addPage([595, 842]);

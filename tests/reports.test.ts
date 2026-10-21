@@ -3,6 +3,7 @@ import {
   csvAmount,
   csvText,
   detailRange,
+  parseReportFilters,
   reportCSV,
   reportFilters,
   type FinancialReport,
@@ -22,6 +23,42 @@ it("valida fechas y UUID de filtros", () => {
       to: "2026-10-20",
       fund: "ajeno",
     }).success,
+  ).toBe(false);
+});
+it("traduce filtros inválidos a un mensaje en español sin lanzar", () => {
+  const base = { from: "2026-10-01", to: "2026-10-20" };
+  const error = (raw: Record<string, string>) => {
+    const r = parseReportFilters(raw);
+    expect(r.ok).toBe(false);
+    return r.ok ? "" : r.error;
+  };
+  expect(error({ ...base, from: "2026-13-01" })).toMatch(
+    /fecha inicial no es válida.*AAAA-MM-DD/,
+  );
+  expect(error({ from: "2026-10-20", to: "2026-10-01" })).toMatch(
+    /anterior o igual a la fecha de corte/,
+  );
+  expect(error({ from: "2025-01-01", to: "2026-10-20" })).toMatch(
+    /como máximo 366 días/,
+  );
+  expect(error({ ...base, fund: "ajeno" })).toMatch(/fondo seleccionado/);
+  expect(error({ ...base, kind: "robo" })).toMatch(/tipo de movimiento/);
+  expect(error({ ...base, author: "ana" })).toMatch(/UUID/);
+  expect(error({ ...base, offset: "-1" })).toMatch(/página/);
+  for (const message of [
+    error({ ...base, from: "" }),
+    error({ ...base, review: "x" }),
+  ]) {
+    expect(message).toMatch(/Revisa los filtros/);
+    expect(message).not.toMatch(/Invalid|expected|received/);
+  }
+});
+it("acepta un año bisiesto completo (366 días) y la página por defecto", () => {
+  const r = parseReportFilters({ from: "2028-01-01", to: "2029-01-01" });
+  expect(r.ok).toBe(true);
+  expect(r.ok && r.value.offset).toBe(0);
+  expect(
+    parseReportFilters({ from: "2026-01-01", to: "2027-01-03" }).ok,
   ).toBe(false);
 });
 const sample: FinancialReport = {
