@@ -52,7 +52,12 @@ async function balance(f = fund) {
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(
-    `create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;set timezone='America/Bogota';`,
+    // auth.uid()/auth.role()/auth.jwt() mirror Supabase: legacy claim GUCs first, then request.jwt.claims (current PostgREST).
+    `create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);
+    create function auth.uid() returns uuid language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claim.sub',true),''),(nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub'))::uuid $$;
+    create function auth.role() returns text language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claim.role',true),''),(nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'role'))::text $$;
+    create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claim',true),''),nullif(current_setting('request.jwt.claims',true),''))::jsonb $$;
+    grant usage on schema auth to anon,authenticated;grant execute on function auth.uid(),auth.role(),auth.jwt() to anon,authenticated;set timezone='America/Bogota';`,
   );
   await db.exec(
     readFileSync("supabase/migrations/202610190001_core.sql", "utf8"),
